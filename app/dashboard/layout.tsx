@@ -1,4 +1,5 @@
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
+import { NotificationManager } from "@/components/dashboard/notification-manager";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function DashboardLayout({
@@ -12,6 +13,9 @@ export default async function DashboardLayout({
   } = await supabase.auth.getUser();
 
   return (
-    <DashboardShell userEmail={user?.email}>{children}</DashboardShell>
+    <DashboardShell userEmail={user?.email}>
+      <NotificationManager />
+      {children}
+    </DashboardShell>
   );
 }
