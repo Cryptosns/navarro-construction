@@ -3,7 +3,10 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 
-const BUCKET = "documents";
+import {
+  removeDocumentAdmin,
+  signedDocumentUrlAdmin,
+} from "@/lib/documents/storage-server";
 
 export type SaveDocumentInput = {
   id?: string | null;
@@ -20,12 +23,13 @@ function revalidateDocumentPages() {
   revalidatePath("/dashboard/documents");
 }
 
-async function removeStorageFile(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  storagePath?: string | null,
-) {
+async function removeStorageFile(storagePath?: string | null) {
   if (!storagePath) return;
-  await supabase.storage.from(BUCKET).remove([storagePath]);
+  try {
+    await removeDocumentAdmin(storagePath);
+  } catch {
+    /* bucket puede no existir aún */
+  }
 }
 
 export async function saveDocument(
@@ -67,7 +71,7 @@ export async function saveDocument(
           .single();
 
         if (existing?.storage_path && existing.storage_path !== input.storagePath) {
-          await removeStorageFile(supabase, existing.storage_path);
+          await removeStorageFile(existing.storage_path);
         }
       }
 
@@ -89,7 +93,7 @@ export async function saveDocument(
 
     if (error) {
       if (input.storagePath) {
-        await removeStorageFile(supabase, input.storagePath);
+        await removeStorageFile(input.storagePath);
       }
       return {
         ok: false,
@@ -134,7 +138,7 @@ export async function deleteDocument(
 
   if (error) return { ok: false, message: error.message };
 
-  await removeStorageFile(supabase, existing?.storage_path);
+  await removeStorageFile(existing?.storage_path);
   revalidateDocumentPages();
   return { ok: true, message: "Documento eliminado." };
 }
@@ -160,15 +164,15 @@ export async function getDocumentDownloadUrl(
     return { ok: false, message: "Este documento no tiene archivo adjunto." };
   }
 
-  const { data: signed, error: signError } = await supabase.storage
-    .from(BUCKET)
-    .createSignedUrl(data.storage_path, 3600);
-
-  if (signError || !signed?.signedUrl) {
-    return { ok: false, message: "No se pudo generar el enlace de descarga." };
+  try {
+    const url = await signedDocumentUrlAdmin(data.storage_path);
+    return { ok: true, url };
+  } catch (err) {
+    return {
+      ok: false,
+      message: err instanceof Error ? err.message : "No se pudo generar el enlace.",
+    };
   }
-
-  return { ok: true, url: signed.signedUrl };
 }
 
 export async function seedDocuments(): Promise<{ ok: boolean; message: string }> {
