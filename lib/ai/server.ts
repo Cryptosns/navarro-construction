@@ -82,10 +82,10 @@ export function trimChatHistory(
 
 export function languageInstruction(language: string): string {
   if (language === "es") {
-    return "Responde SIEMPRE en español. Sé breve y directo (máximo 3-4 oraciones salvo que pidan detalle).";
+    return "Responde SIEMPRE en español. Sé breve y directo (máximo 3-4 oraciones salvo que pidan detalle). Las respuestas se leen en voz alta: usa oraciones cortas, sin listas ni símbolos.";
   }
   if (language === "en") {
-    return "Always respond in English. Be brief and direct (max 3-4 sentences unless more detail is requested).";
+    return "Always respond in English. Be brief and direct (max 3-4 sentences unless more detail is requested). Responses are read aloud: use short sentences, no lists or symbols.";
   }
-  return "Responde en el mismo idioma del usuario (español o inglés). Sé breve y directo.";
+  return "Responde en el mismo idioma del usuario (español o inglés). Sé breve y directo. Las respuestas se leen en voz alta: oraciones cortas, sin listas ni símbolos.";
 }

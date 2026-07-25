@@ -1,19 +1,10 @@
-export type AssistantLanguage = "es" | "en" | "auto";
+import type { AssistantLanguage } from "@/lib/ai/language";
+import { detectTextLanguage, resolveLanguage } from "@/lib/ai/language";
+import { prepareSpeechText } from "@/lib/ai/tts-config";
 
-export function resolveLanguage(lang: AssistantLanguage): "es" | "en" {
-  if (lang === "es" || lang === "en") return lang;
-  if (typeof navigator !== "undefined" && navigator.language.toLowerCase().startsWith("es")) {
-    return "es";
-  }
-  return "en";
-}
-
-export function detectTextLanguage(text: string): "es" | "en" {
-  if (/[áéíóúñ¿¡]/i.test(text)) return "es";
-  const esHints =
-    /\b(hola|gracias|proyecto|obra|presupuestos|calendario|mañana|hoy|qué|cómo|cuándo|dónde|por favor|necesito|tengo|puedes|ayuda|trabajo|evento)\b/i;
-  return esHints.test(text) ? "es" : "en";
-}
+export type { AssistantLanguage } from "@/lib/ai/language";
+export { resolveLanguage, detectTextLanguage } from "@/lib/ai/language";
+export { prepareSpeechText };
 
 /** Quita markdown básico para TTS. */
 export function textForSpeech(text: string): string {
@@ -40,7 +31,7 @@ let audioUnlocked = false;
 const ttsCache = new Map<string, string>();
 
 function ttsCacheKey(text: string, lang: AssistantLanguage): string {
-  return `${lang}:${text.slice(0, 200)}`;
+  return `hd:${lang}:${text.slice(0, 240)}`;
 }
 
 function getSharedAudioElement(): HTMLAudioElement {
@@ -63,6 +54,7 @@ function getSharedAudioElement(): HTMLAudioElement {
 export async function unlockAudioPlayback(): Promise<void> {
   if (audioUnlocked) return;
   const audio = getSharedAudioElement();
+  audio.playbackRate = 1;
   try {
     audio.src =
       "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
@@ -111,7 +103,7 @@ export async function playAssistantSpeech(
   text: string,
   language: AssistantLanguage,
 ): Promise<void> {
-  const spoken = textForSpeech(text);
+  const spoken = prepareSpeechText(text, language);
   if (!spoken) return;
 
   stopAudioPlayback();
@@ -121,6 +113,7 @@ export async function playAssistantSpeech(
   const cached = ttsCache.get(cacheKey);
   if (cached) {
     const audio = getSharedAudioElement();
+  audio.playbackRate = 1;
     await new Promise<void>((resolve, reject) => {
       audio.onended = () => resolve();
       audio.onerror = () => reject(new Error("Playback failed"));
@@ -154,6 +147,7 @@ export async function playAssistantSpeech(
   }
 
   const audio = getSharedAudioElement();
+  audio.playbackRate = 1;
 
   await new Promise<void>((resolve, reject) => {
     audio.onended = () => resolve();

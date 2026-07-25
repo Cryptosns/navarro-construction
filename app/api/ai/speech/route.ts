@@ -1,5 +1,11 @@
 import { getOpenAI, requireAuth } from "@/lib/ai/server";
-import { detectTextLanguage, resolveLanguage, textForSpeech, type AssistantLanguage } from "@/lib/ai/voice";
+import {
+  getTtsConfig,
+  prepareSpeechText,
+  resolveTtsVoice,
+  splitSpeechChunks,
+} from "@/lib/ai/tts-config";
+import type { AssistantLanguage } from "@/lib/ai/voice";
 
 export async function POST(request: Request) {
   try {
@@ -9,31 +15,40 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const text = typeof body.text === "string" ? textForSpeech(body.text) : "";
+    const rawText = typeof body.text === "string" ? body.text : "";
     const language = (body.language ?? "auto") as AssistantLanguage;
 
-    if (!text) {
+    const spoken = prepareSpeechText(rawText, language);
+    if (!spoken) {
       return Response.json({ error: "Texto requerido" }, { status: 400 });
     }
 
+    const config = getTtsConfig();
+    const voice = resolveTtsVoice(language, spoken, config);
     const openai = getOpenAI();
-    const spoken =
-      language === "auto" ? detectTextLanguage(text) : resolveLanguage(language);
 
-    const mp3 = await openai.audio.speech.create({
-      model: "tts-1",
-      voice: spoken === "es" ? "nova" : "alloy",
-      input: text.slice(0, 600),
-      response_format: "mp3",
-      speed: 1.05,
-    });
+    const chunks = splitSpeechChunks(spoken, config.maxChars);
+    const buffers: Buffer[] = [];
 
-    const buffer = Buffer.from(await mp3.arrayBuffer());
+    for (const chunk of chunks) {
+      const mp3 = await openai.audio.speech.create({
+        model: config.model,
+        voice,
+        input: chunk,
+        response_format: "mp3",
+        speed: config.speed,
+      });
+      buffers.push(Buffer.from(await mp3.arrayBuffer()));
+    }
+
+    const buffer = Buffer.concat(buffers);
 
     return new Response(buffer, {
       headers: {
         "Content-Type": "audio/mpeg",
-        "Cache-Control": "private, max-age=3600",
+        "Cache-Control": "private, max-age=86400",
+        "X-TTS-Model": config.model,
+        "X-TTS-Voice": voice,
       },
     });
   } catch (err) {
