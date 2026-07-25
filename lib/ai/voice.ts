@@ -37,6 +37,11 @@ export function getRecordingMimeType(): string {
 
 let sharedAudio: HTMLAudioElement | null = null;
 let audioUnlocked = false;
+const ttsCache = new Map<string, string>();
+
+function ttsCacheKey(text: string, lang: AssistantLanguage): string {
+  return `${lang}:${text.slice(0, 200)}`;
+}
 
 function getSharedAudioElement(): HTMLAudioElement {
   if (typeof document === "undefined") {
@@ -112,6 +117,19 @@ export async function playAssistantSpeech(
   stopAudioPlayback();
   await unlockAudioPlayback();
 
+  const cacheKey = ttsCacheKey(spoken, language);
+  const cached = ttsCache.get(cacheKey);
+  if (cached) {
+    const audio = getSharedAudioElement();
+    await new Promise<void>((resolve, reject) => {
+      audio.onended = () => resolve();
+      audio.onerror = () => reject(new Error("Playback failed"));
+      audio.src = cached;
+      audio.play().catch(reject);
+    });
+    return;
+  }
+
   const res = await fetch("/api/ai/speech", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -126,32 +144,25 @@ export async function playAssistantSpeech(
 
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
+  ttsCache.set(cacheKey, url);
+  if (ttsCache.size > 20) {
+    const first = ttsCache.keys().next().value;
+    if (first) {
+      URL.revokeObjectURL(ttsCache.get(first)!);
+      ttsCache.delete(first);
+    }
+  }
+
   const audio = getSharedAudioElement();
 
   await new Promise<void>((resolve, reject) => {
-    const cleanup = () => {
-      URL.revokeObjectURL(url);
-      audio.onended = null;
-      audio.onerror = null;
-    };
-
-    audio.onended = () => {
-      cleanup();
-      resolve();
-    };
-    audio.onerror = () => {
-      cleanup();
-      reject(new Error("Error al reproducir"));
-    };
-
+    audio.onended = () => resolve();
+    audio.onerror = () => reject(new Error("Error al reproducir"));
     audio.src = url;
     audio.load();
     audio.play().then(() => {
       audioUnlocked = true;
-    }).catch((err) => {
-      cleanup();
-      reject(err);
-    });
+    }).catch(reject);
   });
 }
 

@@ -1,40 +1,31 @@
-import OpenAI from "openai";
-import { createClient } from "@/lib/supabase/server";
-import { detectTextLanguage, resolveLanguage, type AssistantLanguage } from "@/lib/ai/voice";
+import { getOpenAI, requireAuth } from "@/lib/ai/server";
+import { detectTextLanguage, resolveLanguage, textForSpeech, type AssistantLanguage } from "@/lib/ai/voice";
 
 export async function POST(request: Request) {
   try {
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
+    const { user } = await requireAuth();
     if (!user) {
       return Response.json({ error: "No autorizado" }, { status: 401 });
     }
 
-    if (!process.env.OPENAI_API_KEY) {
-      return Response.json({ error: "OpenAI API key no configurada" }, { status: 500 });
-    }
-
     const body = await request.json();
-    const text = typeof body.text === "string" ? body.text.trim() : "";
+    const text = typeof body.text === "string" ? textForSpeech(body.text) : "";
     const language = (body.language ?? "auto") as AssistantLanguage;
 
     if (!text) {
       return Response.json({ error: "Texto requerido" }, { status: 400 });
     }
 
-    const resolved =
+    const openai = getOpenAI();
+    const spoken =
       language === "auto" ? detectTextLanguage(text) : resolveLanguage(language);
-
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
     const mp3 = await openai.audio.speech.create({
       model: "tts-1",
-      voice: "nova",
-      input: text.slice(0, 4096),
+      voice: spoken === "es" ? "nova" : "alloy",
+      input: text.slice(0, 600),
       response_format: "mp3",
+      speed: 1.05,
     });
 
     const buffer = Buffer.from(await mp3.arrayBuffer());
@@ -42,14 +33,11 @@ export async function POST(request: Request) {
     return new Response(buffer, {
       headers: {
         "Content-Type": "audio/mpeg",
-        "Cache-Control": "no-store",
+        "Cache-Control": "private, max-age=3600",
       },
     });
   } catch (err) {
     console.error("TTS error:", err);
-    return Response.json(
-      { error: "No se pudo generar el audio." },
-      { status: 500 },
-    );
+    return Response.json({ error: "No se pudo generar el audio." }, { status: 500 });
   }
 }

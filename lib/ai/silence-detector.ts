@@ -41,7 +41,7 @@ export function startSilenceDetection(
   let speechStartedAt: number | null = null;
   let silentSince: number | null = null;
   let stopped = false;
-  let rafId = 0;
+  let intervalId = 0;
 
   const tick = () => {
     if (stopped) return;
@@ -61,24 +61,19 @@ export function startSilenceDetection(
       silentSince = null;
     } else if (speechStartedAt !== null && now - speechStartedAt >= minSpeechMs) {
       if (silentSince === null) silentSince = now;
-      else if (
-        elapsed >= minRecordMs &&
-        now - silentSince >= silenceMs
-      ) {
+      else if (elapsed >= minRecordMs && now - silentSince >= silenceMs) {
         stopped = true;
         onSilence();
         return;
       }
     }
-
-    rafId = requestAnimationFrame(tick);
   };
 
-  rafId = requestAnimationFrame(tick);
+  intervalId = window.setInterval(tick, 100);
 
   return () => {
     stopped = true;
-    cancelAnimationFrame(rafId);
+    clearInterval(intervalId);
     source.disconnect();
     analyser.disconnect();
     void audioContext.close();

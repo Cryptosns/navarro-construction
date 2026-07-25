@@ -1,32 +1,23 @@
-import OpenAI from "openai";
-import { createClient } from "@/lib/supabase/server";
+import { getOpenAI, requireAuth } from "@/lib/ai/server";
+import { resolveLanguage, type AssistantLanguage } from "@/lib/ai/voice";
 
 export async function POST(request: Request) {
   try {
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
+    const { user } = await requireAuth();
     if (!user) {
       return Response.json({ error: "No autorizado" }, { status: 401 });
     }
 
-    if (!process.env.OPENAI_API_KEY) {
-      return Response.json({ error: "OpenAI API key no configurada" }, { status: 500 });
-    }
-
     const formData = await request.formData();
     const audio = formData.get("audio");
+    const language = formData.get("language");
 
     if (!(audio instanceof Blob) || audio.size === 0) {
       return Response.json({ error: "Audio requerido" }, { status: 400 });
     }
 
-    const language = formData.get("language");
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
-    const ext = audio.type.includes("mp4") ? "mp4" : audio.type.includes("wav") ? "wav" : "webm";
+    const openai = getOpenAI();
+    const ext = audio.type.includes("mp4") ? "mp4" : "webm";
     const file = new File([audio], `voice.${ext}`, { type: audio.type || "audio/webm" });
 
     const transcription = await openai.audio.transcriptions.create({
@@ -40,7 +31,7 @@ export async function POST(request: Request) {
   } catch (err) {
     console.error("Whisper error:", err);
     return Response.json(
-      { error: "No se pudo transcribir el audio. Intenta de nuevo." },
+      { error: "No se pudo transcribir el audio." },
       { status: 500 },
     );
   }

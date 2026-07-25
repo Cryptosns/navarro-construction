@@ -9,7 +9,6 @@ import {
   getUiStrings,
   playAssistantSpeech,
   stopAudioPlayback,
-  transcribeAudio,
   unlockAudioPlayback,
   type AssistantLanguage,
 } from "@/lib/ai/voice";
@@ -32,7 +31,7 @@ export function AiAssistantPanel({
   embedded = false,
   mobileOverlay = false,
 }: AiAssistantPanelProps) {
-  const { close, messages, loading, sendMessage, setMessages } =
+  const { close, messages, loading, sendMessage, sendVoiceTurn, setMessages } =
     useAiAssistant();
   const [input, setInput] = useState("");
   const [language, setLanguage] = useState<AssistantLanguage>("auto");
@@ -40,7 +39,7 @@ export function AiAssistantPanel({
   const [voiceState, setVoiceState] = useState<VoiceState>("idle");
   const [voiceHint, setVoiceHint] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const lastSpokenRef = useRef(-1);
+  const lastSpokenRef = useRef<string | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -53,7 +52,12 @@ export function AiAssistantPanel({
   useEffect(() => {
     if (messages.length === 0) {
       setMessages([
-        { role: "assistant", content: ui.starter, status: "done" },
+        {
+          id: "starter",
+          role: "assistant",
+          content: ui.starter,
+          status: "done",
+        },
       ]);
     }
   }, [messages.length, setMessages, ui.starter]);
@@ -73,11 +77,11 @@ export function AiAssistantPanel({
     if (
       last?.role === "assistant" &&
       last.status === "done" &&
-      lastIndex > 0 &&
-      lastIndex !== lastSpokenRef.current &&
+      last.id !== "starter" &&
+      last.id !== lastSpokenRef.current &&
       voiceState !== "recording"
     ) {
-      lastSpokenRef.current = lastIndex;
+      lastSpokenRef.current = last.id;
       void replayMessage(last.content);
     }
   }, [messages, loading, speakReplies, language, voiceState]);
@@ -147,10 +151,8 @@ export function AiAssistantPanel({
               return;
             }
 
-            const text = await transcribeAudio(blob, language);
-            if (text.trim()) {
-              handleSend(text);
-            } else {
+            const result = await sendVoiceTurn(blob, language);
+            if (!result) {
               setVoiceHint(ui.voiceFailed);
             }
           } catch (err) {
@@ -322,8 +324,8 @@ export function AiAssistantPanel({
       </div>
 
       <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
-        {messages.map((msg, i) => (
-          <div key={i}>
+        {messages.map((msg) => (
+          <div key={msg.id}>
             {msg.role === "assistant" ? (
               <div className="flex gap-2.5">
                 <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-semibold text-white">
@@ -333,7 +335,7 @@ export function AiAssistantPanel({
                   <div className="rounded-2xl rounded-tl-md bg-zinc-100 px-3.5 py-2.5 text-sm leading-relaxed text-zinc-800">
                     {msg.content}
                   </div>
-                  {msg.status === "done" && i > 0 && (
+                  {msg.status === "done" && msg.id !== "starter" && (
                     <div className="mt-1.5 flex flex-wrap items-center gap-3">
                       <p className="flex items-center gap-1 text-xs text-emerald-600">
                         <Check className="size-3.5" />
@@ -365,7 +367,7 @@ export function AiAssistantPanel({
           </div>
         ))}
 
-        {loading && (
+        {loading && !messages.some((m) => m.status === "streaming") && (
           <div className="flex gap-2.5">
             <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-semibold text-white">
               D

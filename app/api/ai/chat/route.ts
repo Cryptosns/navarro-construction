@@ -1,34 +1,14 @@
-import OpenAI from "openai";
-import { createClient } from "@/lib/supabase/server";
-import { projects, aiInsights } from "@/lib/mock-data";
-
-const systemPrompt = `You are Dave, the NavarroConstruction AI project assistant.
-Respond in clear, practical English (or Spanish if the user writes in Spanish).
-You have access to this project data:
-${JSON.stringify(projects, null, 2)}
-
-Insights:
-${JSON.stringify(aiInsights, null, 2)}
-
-Help with budgets, schedules, risks, staffing and construction decisions.
-Be concise but useful.`;
+import { getOpenAI, requireAuth, buildAssistantContext, trimChatHistory, languageInstruction } from "@/lib/ai/server";
 
 export async function POST(request: Request) {
   try {
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
+    const { supabase, user } = await requireAuth();
     if (!user) {
       return Response.json({ error: "No autorizado" }, { status: 401 });
     }
 
     if (!process.env.OPENAI_API_KEY) {
-      return Response.json(
-        { error: "OpenAI API key no configurada" },
-        { status: 500 },
-      );
+      return Response.json({ error: "OpenAI API key no configurada" }, { status: 500 });
     }
 
     const body = await request.json();
@@ -38,55 +18,60 @@ export async function POST(request: Request) {
       return Response.json({ error: "Mensajes requeridos" }, { status: 400 });
     }
 
-    const langInstruction =
-      language === "es"
-        ? "Responde SIEMPRE en español claro y natural."
-        : language === "en"
-          ? "Always respond in clear, natural English."
-          : "Responde en el mismo idioma que use el usuario (español o inglés).";
+    const context = await buildAssistantContext(supabase, user.id);
+    const systemPrompt = `Eres Dave, asistente de construcción de NavarroConstruction.
+${languageInstruction(language)}
 
-    const dynamicSystemPrompt = `${systemPrompt}\n\n${langInstruction}`;
+Datos actuales del usuario:
+${context}`;
 
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const openai = getOpenAI();
+    const history = trimChatHistory(messages);
 
-    const completion = await openai.chat.completions.create({
+    const stream = await openai.chat.completions.create({
       model: "gpt-4o-mini",
-      messages: [{ role: "system", content: dynamicSystemPrompt }, ...messages],
-      max_tokens: 800,
+      messages: [{ role: "system", content: systemPrompt }, ...history],
+      max_tokens: 350,
+      temperature: 0.6,
+      stream: true,
     });
 
-    const reply = completion.choices[0]?.message?.content ?? "Sin respuesta.";
+    const encoder = new TextEncoder();
+    const readable = new ReadableStream({
+      async start(controller) {
+        try {
+          for await (const chunk of stream) {
+            const text = chunk.choices[0]?.delta?.content ?? "";
+            if (text) {
+              controller.enqueue(
+                encoder.encode(`data: ${JSON.stringify({ text })}\n\n`),
+              );
+            }
+          }
+          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        } catch {
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({ error: "Stream error" })}\n\n`,
+            ),
+          );
+        } finally {
+          controller.close();
+        }
+      },
+    });
 
-    return Response.json({ reply });
+    return new Response(readable, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
+      },
+    });
   } catch (err) {
     console.error("OpenAI API error:", err);
-
-    if (err instanceof OpenAI.APIError) {
-      if (err.status === 429) {
-        return Response.json(
-          {
-            error:
-              "Cuota de OpenAI agotada. Revisa tu plan y facturación en platform.openai.com",
-          },
-          { status: 429 },
-        );
-      }
-
-      if (err.status === 401) {
-        return Response.json(
-          { error: "API key de OpenAI inválida. Revisa tu .env.local" },
-          { status: 401 },
-        );
-      }
-
-      return Response.json(
-        { error: err.message ?? "Error al conectar con OpenAI" },
-        { status: err.status ?? 500 },
-      );
-    }
-
     return Response.json(
-      { error: "Error interno del servidor. Intenta de nuevo." },
+      { error: "Error al conectar con OpenAI. Intenta de nuevo." },
       { status: 500 },
     );
   }

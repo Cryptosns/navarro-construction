@@ -1,14 +1,22 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { Bot, Menu } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Sidebar } from "@/components/dashboard/sidebar";
-import { AiAssistantPanel } from "@/components/dashboard/ai-assistant-panel";
 import {
   AiAssistantProvider,
-  useAiAssistant,
+  useAiAssistantUi,
 } from "@/components/dashboard/ai-assistant-context";
+
+const AiAssistantPanel = dynamic(
+  () =>
+    import("@/components/dashboard/ai-assistant-panel").then((m) => ({
+      default: m.AiAssistantPanel,
+    })),
+  { ssr: false, loading: () => null },
+);
 
 type DashboardShellProps = {
   children: React.ReactNode;
@@ -17,7 +25,7 @@ type DashboardShellProps = {
 
 function DashboardShellInner({ children, userEmail }: DashboardShellProps) {
   const pathname = usePathname();
-  const { isOpen, open, close, toggle } = useAiAssistant();
+  const { isOpen, open, close, toggle } = useAiAssistantUi();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const isAssistantPage = pathname.startsWith("/dashboard/assistant");
 
@@ -26,20 +34,8 @@ function DashboardShellInner({ children, userEmail }: DashboardShellProps) {
   }, [pathname]);
 
   useEffect(() => {
-    if (isAssistantPage) {
-      open();
-      return;
-    }
-
-    const mq = window.matchMedia("(min-width: 1024px)");
-    const syncPanel = () => {
-      if (mq.matches) open();
-      else close();
-    };
-
-    syncPanel();
-    mq.addEventListener("change", syncPanel);
-    return () => mq.removeEventListener("change", syncPanel);
+    if (isAssistantPage) open();
+    else close();
   }, [isAssistantPage, open, close]);
 
   useEffect(() => {
@@ -112,7 +108,7 @@ function DashboardShellInner({ children, userEmail }: DashboardShellProps) {
         <button
           type="button"
           onClick={toggle}
-          className="fixed bottom-6 right-6 z-50 flex size-14 items-center justify-center rounded-full bg-blue-600 text-white shadow-lg shadow-blue-600/30 transition hover:bg-blue-700 lg:hidden"
+          className="fixed bottom-6 right-6 z-50 flex size-14 items-center justify-center rounded-full bg-blue-600 text-white shadow-lg shadow-blue-600/30 transition hover:bg-blue-700"
           aria-label="Open AI Assistant"
         >
           <Bot className="size-6" />

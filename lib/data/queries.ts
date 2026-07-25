@@ -33,7 +33,7 @@ export async function getProjects(
 ): Promise<Project[]> {
   const { data, error } = await supabase
     .from("projects")
-    .select("*")
+    .select("id, name, location, status, progress, budget, spent, deadline, team_size")
     .order("created_at", { ascending: false });
 
   if (error) return mockProjects;
