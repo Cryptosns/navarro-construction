@@ -22,7 +22,7 @@ type AiAssistantContextValue = {
   toggle: () => void;
   messages: ChatMessage[];
   loading: boolean;
-  sendMessage: (text: string) => Promise<void>;
+  sendMessage: (text: string, language?: "es" | "en" | "auto") => Promise<void>;
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
 };
 
@@ -37,7 +37,7 @@ export function AiAssistantProvider({ children }: { children: ReactNode }) {
   const close = useCallback(() => setIsOpen(false), []);
   const toggle = useCallback(() => setIsOpen((v) => !v), []);
 
-  const sendMessage = useCallback(async (text: string) => {
+  const sendMessage = useCallback(async (text: string, language: "es" | "en" | "auto" = "auto") => {
     const trimmed = text.trim();
     if (!trimmed || loading) return;
 
@@ -58,7 +58,7 @@ export function AiAssistantProvider({ children }: { children: ReactNode }) {
       const res = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: payload }),
+        body: JSON.stringify({ messages: payload, language }),
       });
 
       const raw = await res.text();

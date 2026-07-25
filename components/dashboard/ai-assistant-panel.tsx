@@ -1,21 +1,19 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Check, Mic, Minus, X } from "lucide-react";
+import { Check, Mic, Minus, Volume2, VolumeX, X } from "lucide-react";
 import { useAiAssistant } from "@/components/dashboard/ai-assistant-context";
+import {
+  getSpeechRecognitionLang,
+  getUiStrings,
+  speakText,
+  stopSpeaking,
+  type AssistantLanguage,
+} from "@/lib/ai/voice";
 import { cn } from "@/lib/utils";
 
 const ASSISTANT_NAME = "Dave";
 const ASSISTANT_ROLE = "Project Assistant";
-
-const starterMessages = [
-  {
-    role: "assistant" as const,
-    content:
-      "Hi! I can help you manage projects, budgets, materials and tasks. What would you like to do?",
-    status: "done" as const,
-  },
-];
 
 type AiAssistantPanelProps = {
   className?: string;
@@ -44,14 +42,25 @@ export function AiAssistantPanel({
     useAiAssistant();
   const [input, setInput] = useState("");
   const [listening, setListening] = useState(false);
+  const [language, setLanguage] = useState<AssistantLanguage>("auto");
+  const [speakReplies, setSpeakReplies] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
+  const lastSpokenRef = useRef(-1);
+
+  const ui = getUiStrings(language);
 
   useEffect(() => {
     if (messages.length === 0) {
-      setMessages(starterMessages);
+      setMessages([
+        {
+          role: "assistant",
+          content: ui.starter,
+          status: "done",
+        },
+      ]);
     }
-  }, [messages.length, setMessages]);
+  }, [messages.length, setMessages, ui.starter]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({
@@ -60,11 +69,35 @@ export function AiAssistantPanel({
     });
   }, [messages, loading]);
 
+  useEffect(() => {
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.getVoices();
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!speakReplies || loading) return;
+
+    const lastIndex = messages.length - 1;
+    const last = messages[lastIndex];
+    if (
+      last?.role === "assistant" &&
+      last.status === "done" &&
+      lastIndex > 0 &&
+      lastIndex !== lastSpokenRef.current
+    ) {
+      lastSpokenRef.current = lastIndex;
+      speakText(last.content, language);
+    }
+  }, [messages, loading, speakReplies, language]);
+
+  useEffect(() => () => stopSpeaking(), []);
+
   function handleSend(text?: string) {
     const value = (text ?? input).trim();
     if (!value || loading) return;
     setInput("");
-    sendMessage(value);
+    sendMessage(value, language);
   }
 
   function toggleVoice() {
@@ -80,7 +113,7 @@ export function AiAssistantPanel({
     ).webkitSpeechRecognition;
 
     if (!SpeechRecognitionCtor) {
-      sendMessage("Voice input is not supported in this browser.");
+      sendMessage(ui.voiceNotSupported, language);
       return;
     }
 
@@ -90,8 +123,10 @@ export function AiAssistantPanel({
       return;
     }
 
+    stopSpeaking();
+
     const recognition = new SpeechRecognitionCtor();
-    recognition.lang = "en-US";
+    recognition.lang = getSpeechRecognitionLang(language);
     recognition.interimResults = false;
     recognition.maxAlternatives = 1;
 
@@ -153,6 +188,33 @@ export function AiAssistantPanel({
         )}
       </header>
 
+      <div className="flex flex-wrap items-center gap-2 border-b border-zinc-100 px-4 py-2">
+        <label className="flex items-center gap-1.5 text-xs text-zinc-600">
+          <span>{ui.language}:</span>
+          <select
+            value={language}
+            onChange={(e) => setLanguage(e.target.value as AssistantLanguage)}
+            className="rounded-md border border-zinc-200 px-2 py-1 text-xs outline-none focus:border-blue-500"
+          >
+            <option value="auto">{ui.auto}</option>
+            <option value="es">{ui.spanish}</option>
+            <option value="en">{ui.english}</option>
+          </select>
+        </label>
+        <label className="flex items-center gap-1.5 text-xs text-zinc-600">
+          <input
+            type="checkbox"
+            checked={speakReplies}
+            onChange={(e) => {
+              if (!e.target.checked) stopSpeaking();
+              setSpeakReplies(e.target.checked);
+            }}
+            className="size-3.5 rounded"
+          />
+          {ui.speakReplies}
+        </label>
+      </div>
+
       <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
         {messages.map((msg, i) => (
           <div key={i}>
@@ -168,11 +230,11 @@ export function AiAssistantPanel({
                   {msg.status === "done" && i > 0 && (
                     <p className="mt-1.5 flex items-center gap-1 text-xs text-emerald-600">
                       <Check className="size-3.5" />
-                      Done.
+                      {ui.done}
                     </p>
                   )}
                   {msg.status === "error" && (
-                    <p className="mt-1.5 text-xs text-red-500">Error</p>
+                    <p className="mt-1.5 text-xs text-red-500">{ui.error}</p>
                   )}
                 </div>
               </div>
@@ -192,7 +254,7 @@ export function AiAssistantPanel({
               D
             </div>
             <div className="rounded-2xl rounded-tl-md bg-zinc-100 px-3.5 py-2.5 text-sm text-zinc-500">
-              Thinking...
+              {ui.thinking}
             </div>
           </div>
         )}
@@ -209,13 +271,13 @@ export function AiAssistantPanel({
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Type a message..."
+            placeholder={ui.placeholder}
             disabled={loading}
             className="w-full rounded-xl border border-zinc-200 px-3 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
           />
         </form>
 
-        <div className="flex flex-col items-center gap-2">
+        <div className="flex items-center justify-center gap-4">
           <button
             type="button"
             onClick={toggleVoice}
@@ -226,14 +288,30 @@ export function AiAssistantPanel({
                 ? "border-blue-600 bg-blue-50 text-blue-600 ring-4 ring-blue-100"
                 : "border-zinc-200 bg-zinc-50 text-zinc-600 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600",
             )}
-            aria-label="Tap to speak"
+            aria-label={ui.tapToSpeak}
           >
             <Mic className="size-6" />
           </button>
-          <p className="text-xs text-zinc-500">
-            {listening ? "Listening..." : "Tap to speak"}
-          </p>
+          <button
+            type="button"
+            onClick={() => {
+              if (speakReplies) stopSpeaking();
+              setSpeakReplies((v) => !v);
+            }}
+            className={cn(
+              "flex size-10 items-center justify-center rounded-full border transition",
+              speakReplies
+                ? "border-blue-200 bg-blue-50 text-blue-600"
+                : "border-zinc-200 text-zinc-400",
+            )}
+            aria-label={ui.speakReplies}
+          >
+            {speakReplies ? <Volume2 className="size-5" /> : <VolumeX className="size-5" />}
+          </button>
         </div>
+        <p className="mt-2 text-center text-xs text-zinc-500">
+          {listening ? ui.listening : ui.tapToSpeak}
+        </p>
 
         <div className="mt-4 flex justify-end">
           <button
@@ -242,7 +320,7 @@ export function AiAssistantPanel({
             disabled={loading || !input.trim()}
             className="text-sm font-medium text-blue-600 transition hover:text-blue-700 disabled:text-zinc-300"
           >
-            Continue
+            {ui.continue}
           </button>
         </div>
       </footer>

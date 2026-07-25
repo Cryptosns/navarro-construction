@@ -32,17 +32,26 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { messages } = body;
+    const { messages, language = "auto" } = body;
 
     if (!messages?.length) {
       return Response.json({ error: "Mensajes requeridos" }, { status: 400 });
     }
 
+    const langInstruction =
+      language === "es"
+        ? "Responde SIEMPRE en español claro y natural."
+        : language === "en"
+          ? "Always respond in clear, natural English."
+          : "Responde en el mismo idioma que use el usuario (español o inglés).";
+
+    const dynamicSystemPrompt = `${systemPrompt}\n\n${langInstruction}`;
+
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
-      messages: [{ role: "system", content: systemPrompt }, ...messages],
+      messages: [{ role: "system", content: dynamicSystemPrompt }, ...messages],
       max_tokens: 800,
     });
 
