@@ -3,12 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, Mic, Minus, Volume2, VolumeX, X } from "lucide-react";
 import { useAiAssistant } from "@/components/dashboard/ai-assistant-context";
+import { startSilenceDetection } from "@/lib/ai/silence-detector";
 import {
   getRecordingMimeType,
   getUiStrings,
   playAssistantSpeech,
   stopAudioPlayback,
   transcribeAudio,
+  unlockAudioPlayback,
   type AssistantLanguage,
 } from "@/lib/ai/voice";
 import { cn } from "@/lib/utils";
@@ -43,6 +45,8 @@ export function AiAssistantPanel({
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const recordTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const silenceCleanupRef = useRef<(() => void) | null>(null);
+  const stopRecordingRef = useRef<(processAudio: boolean) => void>(() => {});
 
   const ui = getUiStrings(language);
 
@@ -62,7 +66,7 @@ export function AiAssistantPanel({
   }, [messages, loading]);
 
   useEffect(() => {
-    if (!speakReplies || loading || voiceState === "recording") return;
+    if (!speakReplies || loading) return;
 
     const lastIndex = messages.length - 1;
     const last = messages[lastIndex];
@@ -70,23 +74,33 @@ export function AiAssistantPanel({
       last?.role === "assistant" &&
       last.status === "done" &&
       lastIndex > 0 &&
-      lastIndex !== lastSpokenRef.current
+      lastIndex !== lastSpokenRef.current &&
+      voiceState !== "recording"
     ) {
       lastSpokenRef.current = lastIndex;
-      setVoiceState("speaking");
-      playAssistantSpeech(last.content, language)
-        .catch(() => {})
-        .finally(() => setVoiceState("idle"));
+      void replayMessage(last.content);
     }
   }, [messages, loading, speakReplies, language, voiceState]);
 
   useEffect(
     () => () => {
-      stopRecording(false);
+      stopRecordingRef.current(false);
       stopAudioPlayback();
     },
     [],
   );
+
+  async function replayMessage(text: string) {
+    setVoiceState("speaking");
+    setVoiceHint(null);
+    try {
+      await playAssistantSpeech(text, language);
+    } catch {
+      setVoiceHint(ui.audioFailed);
+    } finally {
+      setVoiceState("idle");
+    }
+  }
 
   function handleSend(text?: string) {
     const value = (text ?? input).trim();
@@ -96,12 +110,19 @@ export function AiAssistantPanel({
     sendMessage(value, language);
   }
 
+  function clearSilenceDetection() {
+    silenceCleanupRef.current?.();
+    silenceCleanupRef.current = null;
+  }
+
   function stopStream() {
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
   }
 
   function stopRecording(processAudio: boolean) {
+    clearSilenceDetection();
+
     if (recordTimeoutRef.current) {
       clearTimeout(recordTimeoutRef.current);
       recordTimeoutRef.current = null;
@@ -154,6 +175,8 @@ export function AiAssistantPanel({
     }
   }
 
+  stopRecordingRef.current = stopRecording;
+
   async function toggleVoice() {
     if (loading || voiceState === "processing" || voiceState === "speaking") {
       return;
@@ -166,6 +189,7 @@ export function AiAssistantPanel({
 
     stopAudioPlayback();
     setVoiceHint(null);
+    await unlockAudioPlayback();
 
     if (!navigator.mediaDevices?.getUserMedia) {
       setVoiceHint(ui.voiceFailed);
@@ -177,6 +201,7 @@ export function AiAssistantPanel({
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
+          autoGainControl: true,
         },
       });
       streamRef.current = stream;
@@ -196,9 +221,15 @@ export function AiAssistantPanel({
       recorder.start(250);
       setVoiceState("recording");
 
+      silenceCleanupRef.current = startSilenceDetection(stream, () => {
+        if (recorderRef.current?.state === "recording") {
+          stopRecordingRef.current(true);
+        }
+      });
+
       recordTimeoutRef.current = setTimeout(() => {
         if (recorderRef.current?.state === "recording") {
-          stopRecording(true);
+          stopRecordingRef.current(true);
         }
       }, MAX_RECORD_MS);
     } catch {
@@ -303,10 +334,21 @@ export function AiAssistantPanel({
                     {msg.content}
                   </div>
                   {msg.status === "done" && i > 0 && (
-                    <p className="mt-1.5 flex items-center gap-1 text-xs text-emerald-600">
-                      <Check className="size-3.5" />
-                      {ui.done}
-                    </p>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-3">
+                      <p className="flex items-center gap-1 text-xs text-emerald-600">
+                        <Check className="size-3.5" />
+                        {ui.done}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => replayMessage(msg.content)}
+                        disabled={voiceState !== "idle"}
+                        className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 disabled:text-zinc-300"
+                      >
+                        <Volume2 className="size-3.5" />
+                        {ui.replay}
+                      </button>
+                    </div>
                   )}
                   {msg.status === "error" && (
                     <p className="mt-1.5 text-xs text-red-500">{ui.error}</p>
@@ -389,7 +431,7 @@ export function AiAssistantPanel({
           </button>
         </div>
         <p className="mt-2 text-center text-xs text-zinc-500">
-          {voiceState === "recording" ? ui.tapToStop : statusLabel}
+          {voiceState === "recording" ? ui.autoStopHint : statusLabel}
         </p>
         {voiceHint && (
           <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-center text-xs text-amber-800">

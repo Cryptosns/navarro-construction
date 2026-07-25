@@ -15,6 +15,18 @@ export function detectTextLanguage(text: string): "es" | "en" {
   return esHints.test(text) ? "es" : "en";
 }
 
+/** Quita markdown básico para TTS. */
+export function textForSpeech(text: string): string {
+  return text
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/\*([^*]+)\*/g, "$1")
+    .replace(/#{1,6}\s/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function getRecordingMimeType(): string {
   if (typeof MediaRecorder === "undefined") return "audio/webm";
   if (MediaRecorder.isTypeSupported("audio/mp4")) return "audio/mp4";
@@ -23,13 +35,47 @@ export function getRecordingMimeType(): string {
   return "audio/mp4";
 }
 
-let activeAudio: HTMLAudioElement | null = null;
+let sharedAudio: HTMLAudioElement | null = null;
+let audioUnlocked = false;
+
+function getSharedAudioElement(): HTMLAudioElement {
+  if (typeof document === "undefined") {
+    return new Audio();
+  }
+  if (!sharedAudio) {
+    sharedAudio = document.createElement("audio");
+    sharedAudio.setAttribute("playsinline", "true");
+    sharedAudio.setAttribute("webkit-playsinline", "true");
+    sharedAudio.preload = "auto";
+    sharedAudio.volume = 1;
+    sharedAudio.style.display = "none";
+    document.body.appendChild(sharedAudio);
+  }
+  return sharedAudio;
+}
+
+/** iOS requiere desbloquear audio con un gesto del usuario (tap en mic). */
+export async function unlockAudioPlayback(): Promise<void> {
+  if (audioUnlocked) return;
+  const audio = getSharedAudioElement();
+  try {
+    audio.src =
+      "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
+    await audio.play();
+    audio.pause();
+    audio.currentTime = 0;
+    audioUnlocked = true;
+  } catch {
+    /* se reintentará al reproducir respuesta */
+  }
+}
 
 export function stopAudioPlayback(): void {
-  if (activeAudio) {
-    activeAudio.pause();
-    activeAudio.src = "";
-    activeAudio = null;
+  const audio = sharedAudio;
+  if (audio) {
+    audio.pause();
+    audio.removeAttribute("src");
+    audio.load();
   }
   if (typeof window !== "undefined" && "speechSynthesis" in window) {
     window.speechSynthesis.cancel();
@@ -60,48 +106,64 @@ export async function playAssistantSpeech(
   text: string,
   language: AssistantLanguage,
 ): Promise<void> {
-  if (!text.trim()) return;
+  const spoken = textForSpeech(text);
+  if (!spoken) return;
 
   stopAudioPlayback();
+  await unlockAudioPlayback();
 
   const res = await fetch("/api/ai/speech", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text, language }),
+    body: JSON.stringify({ text: spoken, language }),
   });
 
   if (!res.ok) {
-    speakWithBrowser(text, language);
+    const ok = speakWithBrowser(spoken, language);
+    if (!ok) throw new Error("No se pudo reproducir el audio");
     return;
   }
 
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
-  const audio = new Audio(url);
-  activeAudio = audio;
+  const audio = getSharedAudioElement();
 
   await new Promise<void>((resolve, reject) => {
-    audio.onended = () => {
+    const cleanup = () => {
       URL.revokeObjectURL(url);
-      activeAudio = null;
+      audio.onended = null;
+      audio.onerror = null;
+    };
+
+    audio.onended = () => {
+      cleanup();
       resolve();
     };
     audio.onerror = () => {
-      URL.revokeObjectURL(url);
-      activeAudio = null;
-      reject(new Error("Audio playback failed"));
+      cleanup();
+      reject(new Error("Error al reproducir"));
     };
-    audio.play().catch(reject);
+
+    audio.src = url;
+    audio.load();
+    audio.play().then(() => {
+      audioUnlocked = true;
+    }).catch((err) => {
+      cleanup();
+      reject(err);
+    });
   });
 }
 
-function speakWithBrowser(text: string, lang: AssistantLanguage): void {
-  if (!("speechSynthesis" in window)) return;
+function speakWithBrowser(text: string, lang: AssistantLanguage): boolean {
+  if (!("speechSynthesis" in window)) return false;
 
   const resolved = lang === "auto" ? detectTextLanguage(text) : resolveLanguage(lang);
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = resolved === "es" ? "es-MX" : "en-US";
+  utterance.volume = 1;
   window.speechSynthesis.speak(utterance);
+  return true;
 }
 
 export const uiStrings = {
@@ -109,6 +171,7 @@ export const uiStrings = {
     placeholder: "Escribe un mensaje...",
     tapToSpeak: "Toca para hablar",
     tapToStop: "Toca para terminar",
+    autoStopHint: "Se detiene solo cuando dejas de hablar",
     listening: "Grabando...",
     processing: "Procesando voz...",
     speaking: "Reproduciendo...",
@@ -118,18 +181,21 @@ export const uiStrings = {
     error: "Error",
     micDenied: "Permite el micrófono en Ajustes del teléfono.",
     voiceFailed: "No se pudo usar el micrófono. Intenta de nuevo.",
+    audioFailed: "No se escuchó la respuesta. Toca 🔊 en el mensaje o sube el volumen.",
+    replay: "Escuchar",
     speakReplies: "Respuestas por voz",
     language: "Idioma",
     auto: "Auto",
     spanish: "Español",
     english: "English",
     starter:
-      "¡Hola! Puedo ayudarte con proyectos, presupuestos, materiales y tareas. Toca el micrófono y habla en español o inglés.",
+      "¡Hola! Toca el micrófono, habla, y me detengo solo cuando termines. Respondo en español o inglés.",
   },
   en: {
     placeholder: "Type a message...",
     tapToSpeak: "Tap to speak",
     tapToStop: "Tap to stop",
+    autoStopHint: "Stops automatically when you finish speaking",
     listening: "Recording...",
     processing: "Processing voice...",
     speaking: "Playing...",
@@ -139,13 +205,15 @@ export const uiStrings = {
     error: "Error",
     micDenied: "Allow microphone access in your phone settings.",
     voiceFailed: "Could not use the microphone. Try again.",
+    audioFailed: "Could not play the reply. Tap 🔊 on the message or turn up volume.",
+    replay: "Listen",
     speakReplies: "Speak replies",
     language: "Language",
     auto: "Auto",
     spanish: "Español",
     english: "English",
     starter:
-      "Hi! I can help with projects, budgets, materials and tasks. Tap the mic and speak in Spanish or English.",
+      "Hi! Tap the mic, speak, and I stop automatically when you finish. I reply in Spanish or English.",
   },
 } as const;
 
