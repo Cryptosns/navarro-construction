@@ -1,0 +1,37 @@
+import type { ProjectStatus } from "./types";
+
+export function formatCurrency(amount: number): string {
+  return new Intl.NumberFormat("es-MX", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(amount);
+}
+
+export function formatDate(date: string): string {
+  return new Intl.DateTimeFormat("es-MX", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(new Date(date));
+}
+
+export const statusLabels: Record<ProjectStatus, string> = {
+  planning: "Planificación",
+  in_progress: "En progreso",
+  on_hold: "En pausa",
+  completed: "Completado",
+};
+
+export const statusColors: Record<ProjectStatus, string> = {
+  planning: "bg-blue-100 text-blue-800",
+  in_progress: "bg-amber-100 text-amber-800",
+  on_hold: "bg-zinc-100 text-zinc-700",
+  completed: "bg-emerald-100 text-emerald-800",
+};
+
+export const priorityColors = {
+  high: "border-l-red-500 bg-red-50",
+  medium: "border-l-amber-500 bg-amber-50",
+  low: "border-l-blue-500 bg-blue-50",
+} as const;
