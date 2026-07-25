@@ -73,5 +73,16 @@ export async function seedDemoData(
     return { ok: false, message: projectError.message };
   }
 
+  const { calendarEvents } = await import("@/lib/mock-data");
+  const calendarRows = calendarEvents.map((e) => ({
+    user_id: userId,
+    title: e.title,
+    date: e.date,
+    project: e.project,
+    type: e.type,
+  }));
+
+  await supabase.from("calendar_events").insert(calendarRows);
+
   return { ok: true, message: "Demo data imported successfully." };
 }

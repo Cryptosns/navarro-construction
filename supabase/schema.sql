@@ -71,3 +71,25 @@ create policy "Users manage own receipts"
 create index if not exists receipts_user_id_idx on receipts (user_id);
 
 -- Optional: create a Storage bucket named "receipts" in Supabase Dashboard → Storage
+
+-- Calendar events
+create table if not exists calendar_events (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users not null,
+  title text not null,
+  date date not null,
+  project text not null default '',
+  type text not null default 'meeting'
+    check (type in ('inspection', 'delivery', 'meeting', 'deadline')),
+  created_at timestamptz not null default now()
+);
+
+alter table calendar_events enable row level security;
+
+create policy "Users manage own calendar events"
+  on calendar_events for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+create index if not exists calendar_events_user_id_idx on calendar_events (user_id);
+create index if not exists calendar_events_date_idx on calendar_events (date);
