@@ -26,4 +26,4 @@ create policy "Users manage own documents"
 
 create index if not exists documents_user_id_idx on documents (user_id);
 
--- Storage: Dashboard → Storage → New bucket → name: documents → Private
+-- Storage: crear bucket "documents" (Private) y ejecutar supabase/documents-storage.sql

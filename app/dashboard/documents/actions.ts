@@ -24,12 +24,13 @@ async function uploadFile(
   supabase: Awaited<ReturnType<typeof createClient>>,
   userId: string,
   file: File,
-): Promise<{ path: string | null; sizeBytes: number; mimeType: string }> {
+): Promise<{ path: string | null; sizeBytes: number; mimeType: string; error?: string }> {
   if (!file.size) {
     return { path: null, sizeBytes: 0, mimeType: file.type || "application/octet-stream" };
   }
 
-  const path = `${userId}/${Date.now()}-${file.name.replace(/\s+/g, "_")}`;
+  const safeName = file.name.replace(/[^\w.\-() ]+/g, "_").replace(/\s+/g, "_");
+  const path = `${userId}/${Date.now()}-${safeName}`;
   const buffer = Buffer.from(await file.arrayBuffer());
 
   const { error } = await supabase.storage.from(BUCKET).upload(path, buffer, {
@@ -37,7 +38,14 @@ async function uploadFile(
     upsert: false,
   });
 
-  if (error) return { path: null, sizeBytes: file.size, mimeType: file.type };
+  if (error) {
+    return {
+      path: null,
+      sizeBytes: file.size,
+      mimeType: file.type,
+      error: error.message,
+    };
+  }
 
   return {
     path,
@@ -74,10 +82,14 @@ export async function saveDocument(
   if (parsed.file?.size) {
     const uploaded = await uploadFile(supabase, user.id, parsed.file);
     if (!uploaded.path) {
+      const hint = uploaded.error?.includes("row-level security")
+        ? "Ejecuta supabase/documents-storage.sql en Supabase (permisos del bucket)."
+        : uploaded.error?.includes("Bucket not found")
+          ? "Crea el bucket 'documents' en Supabase Storage."
+          : uploaded.error;
       return {
         ok: false,
-        message:
-          "No se pudo subir el archivo. Crea el bucket 'documents' en Supabase Storage.",
+        message: hint ?? "No se pudo subir el archivo.",
       };
     }
     storagePath = uploaded.path;
