@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Client, Project } from "@/lib/types";
-import { clients as mockClients, projects as mockProjects } from "@/lib/mock-data";
+import type { Project } from "@/lib/types";
+import { projects as mockProjects } from "@/lib/mock-data";
 
 type DbProject = {
   id: string;
@@ -12,14 +12,6 @@ type DbProject = {
   spent: number;
   deadline: string | null;
   team_size: number;
-};
-
-type DbClient = {
-  id: string;
-  name: string;
-  company: string;
-  email: string;
-  phone: string;
 };
 
 function mapProject(row: DbProject): Project {
@@ -36,17 +28,6 @@ function mapProject(row: DbProject): Project {
   };
 }
 
-function mapClient(row: DbClient, projectsCount = 0): Client {
-  return {
-    id: row.id,
-    name: row.name,
-    company: row.company,
-    email: row.email,
-    phone: row.phone,
-    projectsCount,
-  };
-}
-
 export async function getProjects(
   supabase: SupabaseClient,
 ): Promise<Project[]> {
@@ -55,20 +36,9 @@ export async function getProjects(
     .select("*")
     .order("created_at", { ascending: false });
 
-  if (error || !data?.length) return mockProjects;
+  if (error) return mockProjects;
+  if (!data?.length) return [];
   return (data as DbProject[]).map(mapProject);
-}
-
-export async function getClients(
-  supabase: SupabaseClient,
-): Promise<Client[]> {
-  const { data, error } = await supabase
-    .from("clients")
-    .select("*")
-    .order("created_at", { ascending: false });
-
-  if (error || !data?.length) return mockClients;
-  return (data as DbClient[]).map((c) => mapClient(c));
 }
 
 export async function seedDemoData(
@@ -101,22 +71,6 @@ export async function seedDemoData(
 
   if (projectError) {
     return { ok: false, message: projectError.message };
-  }
-
-  const clientRows = mockClients.map((c) => ({
-    user_id: userId,
-    name: c.name,
-    company: c.company,
-    email: c.email,
-    phone: c.phone,
-  }));
-
-  const { error: clientError } = await supabase
-    .from("clients")
-    .insert(clientRows);
-
-  if (clientError) {
-    return { ok: false, message: clientError.message };
   }
 
   return { ok: true, message: "Demo data imported successfully." };

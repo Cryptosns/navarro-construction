@@ -2,16 +2,16 @@ import OpenAI from "openai";
 import { createClient } from "@/lib/supabase/server";
 import { projects, aiInsights } from "@/lib/mock-data";
 
-const systemPrompt = `Eres NavarroConstruction AI, un asistente experto en gestión de proyectos de construcción.
-Respondes en español de forma clara y práctica.
-Tienes acceso a estos datos de proyectos del usuario:
+const systemPrompt = `You are Dave, the NavarroConstruction AI project assistant.
+Respond in clear, practical English (or Spanish if the user writes in Spanish).
+You have access to this project data:
 ${JSON.stringify(projects, null, 2)}
 
-Insights de IA actuales:
+Insights:
 ${JSON.stringify(aiInsights, null, 2)}
 
-Ayuda con presupuestos, cronogramas, riesgos, personal y decisiones de obra.
-Sé conciso pero útil.`;
+Help with budgets, schedules, risks, staffing and construction decisions.
+Be concise but useful.`;
 
 export async function POST(request: Request) {
   try {

@@ -45,3 +45,29 @@ create policy "Users manage own clients"
 -- Indexes
 create index if not exists projects_user_id_idx on projects (user_id);
 create index if not exists clients_user_id_idx on clients (user_id);
+
+-- Receipts
+create table if not exists receipts (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users not null,
+  vendor text not null,
+  project text not null default '',
+  amount numeric not null default 0,
+  category text not null default 'Materials',
+  date date not null default current_date,
+  status text not null default 'pending'
+    check (status in ('pending', 'approved', 'rejected')),
+  file_name text,
+  created_at timestamptz not null default now()
+);
+
+alter table receipts enable row level security;
+
+create policy "Users manage own receipts"
+  on receipts for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+create index if not exists receipts_user_id_idx on receipts (user_id);
+
+-- Optional: create a Storage bucket named "receipts" in Supabase Dashboard → Storage

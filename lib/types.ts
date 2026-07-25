@@ -80,6 +80,7 @@ export type Receipt = {
   category: string;
   date: string;
   status: "pending" | "approved" | "rejected";
+  fileName?: string;
 };
 
 export type Task = {

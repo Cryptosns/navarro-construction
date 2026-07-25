@@ -19,7 +19,6 @@ export async function seedDatabase() {
   if (result.ok) {
     revalidatePath("/dashboard");
     revalidatePath("/dashboard/projects");
-    revalidatePath("/dashboard/clients");
   }
 
   return result;

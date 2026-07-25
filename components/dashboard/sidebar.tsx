@@ -4,7 +4,6 @@ import { LogoutButton } from "@/components/auth/logout-button";
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: "🏠", exact: true },
   { href: "/dashboard/projects", label: "Projects", icon: "📁" },
-  { href: "/dashboard/clients", label: "Clients", icon: "👥" },
   { href: "/dashboard/calendar", label: "Calendar", icon: "📅" },
   { href: "/dashboard/documents", label: "Documents", icon: "📄" },
   { href: "/dashboard/estimates", label: "Estimates", icon: "💰" },

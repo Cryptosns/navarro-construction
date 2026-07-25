@@ -4,8 +4,8 @@ import { ActiveProjectsPanel } from "@/components/dashboard/home/active-projects
 import { UpcomingTasksPanel } from "@/components/dashboard/home/upcoming-tasks-panel";
 import { BudgetOverviewPanel } from "@/components/dashboard/home/budget-overview-panel";
 import { RecentPhotosPanel } from "@/components/dashboard/home/recent-photos-panel";
-import { DashboardAiPanel } from "@/components/dashboard/home/dashboard-ai-panel";
 import {
+  projects as mockProjects,
   recentActivity,
   recentPhotos,
   upcomingTasks,
@@ -19,7 +19,8 @@ export default async function DashboardPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const projects = await getProjects(supabase);
+  const dbProjects = await getProjects(supabase);
+  const projects = dbProjects.length ? dbProjects : mockProjects;
   const activeProjects = projects.filter(
     (p) => p.status === "in_progress" || p.status === "planning",
   );
@@ -44,10 +45,6 @@ export default async function DashboardPage() {
 
         <div className="mt-6">
           <RecentPhotosPanel photos={recentPhotos} />
-        </div>
-
-        <div className="mt-6">
-          <DashboardAiPanel />
         </div>
       </main>
     </>
