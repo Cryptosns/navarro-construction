@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, Mic, Minus, Volume2, VolumeX, X } from "lucide-react";
 import { useAiAssistant } from "@/components/dashboard/ai-assistant-context";
-import { startSilenceDetection } from "@/lib/ai/silence-detector";
+import { startSilenceDetection, type SilenceDetectorHandle } from "@/lib/ai/silence-detector";
 import {
   getRecordingMimeType,
   getUiStrings,
@@ -44,7 +44,8 @@ export function AiAssistantPanel({
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const recordTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const silenceCleanupRef = useRef<(() => void) | null>(null);
+  const silenceDetectorRef = useRef<SilenceDetectorHandle | null>(null);
+  const isStoppingRef = useRef(false);
   const stopRecordingRef = useRef<(processAudio: boolean) => void>(() => {});
 
   const ui = getUiStrings(language);
@@ -115,8 +116,8 @@ export function AiAssistantPanel({
   }
 
   function clearSilenceDetection() {
-    silenceCleanupRef.current?.();
-    silenceCleanupRef.current = null;
+    silenceDetectorRef.current?.cleanup();
+    silenceDetectorRef.current = null;
   }
 
   function stopStream() {
@@ -125,6 +126,9 @@ export function AiAssistantPanel({
   }
 
   function stopRecording(processAudio: boolean) {
+    if (isStoppingRef.current) return;
+
+    const hadSpeech = silenceDetectorRef.current?.hadMeaningfulSpeech() ?? false;
     clearSilenceDetection();
 
     if (recordTimeoutRef.current) {
@@ -136,8 +140,10 @@ export function AiAssistantPanel({
     recorderRef.current = null;
 
     if (recorder && recorder.state !== "inactive") {
+      isStoppingRef.current = true;
       if (processAudio) {
         recorder.onstop = async () => {
+          isStoppingRef.current = false;
           stopStream();
           setVoiceState("processing");
           try {
@@ -145,15 +151,15 @@ export function AiAssistantPanel({
             const blob = new Blob(chunksRef.current, { type: mime });
             chunksRef.current = [];
 
-            if (blob.size < 800) {
-              setVoiceHint(ui.voiceFailed);
+            if (!hadSpeech || blob.size < 2500) {
+              setVoiceHint(ui.noSpeechDetected);
               setVoiceState("idle");
               return;
             }
 
             const result = await sendVoiceTurn(blob, language);
-            if (!result) {
-              setVoiceHint(ui.voiceFailed);
+            if ("error" in result) {
+              setVoiceHint(result.error);
             }
           } catch (err) {
             setVoiceHint(
@@ -165,6 +171,7 @@ export function AiAssistantPanel({
         };
       } else {
         recorder.onstop = () => {
+          isStoppingRef.current = false;
           stopStream();
           chunksRef.current = [];
           setVoiceState("idle");
@@ -223,7 +230,7 @@ export function AiAssistantPanel({
       recorder.start(250);
       setVoiceState("recording");
 
-      silenceCleanupRef.current = startSilenceDetection(stream, () => {
+      silenceDetectorRef.current = startSilenceDetection(stream, () => {
         if (recorderRef.current?.state === "recording") {
           stopRecordingRef.current(true);
         }

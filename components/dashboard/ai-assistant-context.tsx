@@ -28,7 +28,10 @@ type AiAssistantContextValue = {
   sendVoiceTurn: (
     audio: Blob,
     language?: "es" | "en" | "auto",
-  ) => Promise<{ transcript: string; reply: string } | null>;
+  ) => Promise<
+    | { transcript: string; reply: string }
+    | { error: string }
+  >;
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
 };
 
@@ -162,7 +165,7 @@ export function AiAssistantProvider({ children }: { children: ReactNode }) {
 
   const sendVoiceTurn = useCallback(
     async (audio: Blob, language: "es" | "en" | "auto" = "auto") => {
-      if (loadingRef.current) return null;
+      if (loadingRef.current) return { error: "Busy" };
 
       loadingRef.current = true;
       setLoading(true);
@@ -184,7 +187,9 @@ export function AiAssistantProvider({ children }: { children: ReactNode }) {
         });
 
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? "Voice error");
+        if (!res.ok) {
+          return { error: (data.error as string) ?? "Voice error" };
+        }
 
         const userMsg: ChatMessage = {
           id: newId(),
@@ -199,9 +204,14 @@ export function AiAssistantProvider({ children }: { children: ReactNode }) {
         };
 
         setMessages((prev) => [...prev, userMsg, assistantMsg]);
-        return { transcript: data.transcript as string, reply: data.reply as string };
-      } catch {
-        return null;
+        return {
+          transcript: data.transcript as string,
+          reply: data.reply as string,
+        };
+      } catch (err) {
+        return {
+          error: err instanceof Error ? err.message : "Voice error",
+        };
       } finally {
         loadingRef.current = false;
         setLoading(false);

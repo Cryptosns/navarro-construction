@@ -1,4 +1,5 @@
 import { getOpenAI, requireAuth, buildAssistantContext, trimChatHistory, languageInstruction } from "@/lib/ai/server";
+import { isValidUserTranscript } from "@/lib/ai/transcript-guard";
 import { resolveLanguage, type AssistantLanguage } from "@/lib/ai/voice";
 
 export async function POST(request: Request) {
@@ -21,6 +22,10 @@ export async function POST(request: Request) {
       return Response.json({ error: "Audio requerido" }, { status: 400 });
     }
 
+    if (audio.size < 2500) {
+      return Response.json({ error: "Audio demasiado corto. Habla un poco más." }, { status: 400 });
+    }
+
     let history: { role: string; content: string }[] = [];
     if (typeof historyRaw === "string") {
       try {
@@ -40,13 +45,40 @@ export async function POST(request: Request) {
         model: "whisper-1",
         language:
           language === "auto" ? undefined : resolveLanguage(language),
+        response_format: "verbose_json",
+        temperature: 0,
       }),
       buildAssistantContext(supabase, user.id),
     ]);
 
     const transcript = transcription.text.trim();
-    if (!transcript) {
-      return Response.json({ error: "No se detectó voz." }, { status: 400 });
+    const segments = "segments" in transcription ? transcription.segments ?? [] : [];
+    const noSpeechProb =
+      segments.length > 0
+        ? segments.reduce((sum, seg) => sum + (seg.no_speech_prob ?? 0), 0) /
+          segments.length
+        : undefined;
+    const avgLogprob =
+      segments.length > 0
+        ? segments.reduce((sum, seg) => sum + (seg.avg_logprob ?? -99), 0) /
+          segments.length
+        : undefined;
+    const durationSec =
+      "duration" in transcription && typeof transcription.duration === "number"
+        ? transcription.duration
+        : undefined;
+
+    if (
+      !isValidUserTranscript(transcript, {
+        noSpeechProb,
+        avgLogprob,
+        durationSec,
+      })
+    ) {
+      return Response.json(
+        { error: "No se detectó voz clara. Intenta hablar más cerca del micrófono." },
+        { status: 400 },
+      );
     }
 
     const systemPrompt = `Eres Dave, asistente de construcción de NavarroConstruction.

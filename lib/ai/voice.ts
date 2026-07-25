@@ -192,6 +192,8 @@ export const uiStrings = {
     error: "Error",
     micDenied: "Permite el micrófono en Ajustes del teléfono.",
     voiceFailed: "No se pudo usar el micrófono. Intenta de nuevo.",
+    noSpeechDetected:
+      "No detecté voz clara. Habla más cerca del micrófono y un poco más fuerte.",
     audioFailed: "No se escuchó la respuesta. Toca 🔊 en el mensaje o sube el volumen.",
     replay: "Escuchar",
     speakReplies: "Respuestas por voz",
@@ -216,6 +218,8 @@ export const uiStrings = {
     error: "Error",
     micDenied: "Allow microphone access in your phone settings.",
     voiceFailed: "Could not use the microphone. Try again.",
+    noSpeechDetected:
+      "No clear speech detected. Speak closer to the mic and a bit louder.",
     audioFailed: "Could not play the reply. Tap 🔊 on the message or turn up volume.",
     replay: "Listen",
     speakReplies: "Speak replies",

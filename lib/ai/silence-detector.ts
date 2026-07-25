@@ -1,6 +1,6 @@
 /** Detecta silencio tras hablar y dispara callback para parar la grabación. */
 export type SilenceDetectorOptions = {
-  /** Segundos de silencio tras detectar voz antes de parar */
+  /** Milisegundos de silencio tras detectar voz antes de parar */
   silenceMs?: number;
   /** Volumen mínimo considerado voz (0–1) */
   speechThreshold?: number;
@@ -8,30 +8,39 @@ export type SilenceDetectorOptions = {
   minRecordMs?: number;
   /** Debe haber voz al menos este tiempo antes de contar silencio */
   minSpeechMs?: number;
+  /** Voz acumulada mínima para considerar que el usuario habló de verdad */
+  minTotalSpeechMs?: number;
+};
+
+export type SilenceDetectorHandle = {
+  cleanup: () => void;
+  hadMeaningfulSpeech: () => boolean;
 };
 
 export function startSilenceDetection(
   stream: MediaStream,
   onSilence: () => void,
   options: SilenceDetectorOptions = {},
-): () => void {
-  const silenceMs = options.silenceMs ?? 1600;
-  const speechThreshold = options.speechThreshold ?? 0.012;
-  const minRecordMs = options.minRecordMs ?? 700;
-  const minSpeechMs = options.minSpeechMs ?? 250;
+): SilenceDetectorHandle {
+  const silenceMs = options.silenceMs ?? 1800;
+  const speechThreshold = options.speechThreshold ?? 0.022;
+  const minRecordMs = options.minRecordMs ?? 900;
+  const minSpeechMs = options.minSpeechMs ?? 400;
+  const minTotalSpeechMs = options.minTotalSpeechMs ?? 700;
+  const tickMs = 100;
 
   const AudioCtx =
     window.AudioContext ??
     (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
 
   if (!AudioCtx) {
-    return () => {};
+    return { cleanup: () => {}, hadMeaningfulSpeech: () => false };
   }
 
   const audioContext = new AudioCtx();
   const analyser = audioContext.createAnalyser();
   analyser.fftSize = 2048;
-  analyser.smoothingTimeConstant = 0.85;
+  analyser.smoothingTimeConstant = 0.88;
 
   const source = audioContext.createMediaStreamSource(stream);
   source.connect(analyser);
@@ -40,6 +49,7 @@ export function startSilenceDetection(
   const startedAt = Date.now();
   let speechStartedAt: number | null = null;
   let silentSince: number | null = null;
+  let totalSpeechMs = 0;
   let stopped = false;
   let intervalId = 0;
 
@@ -57,11 +67,16 @@ export function startSilenceDetection(
     const elapsed = now - startedAt;
 
     if (rms >= speechThreshold) {
+      totalSpeechMs += tickMs;
       if (speechStartedAt === null) speechStartedAt = now;
       silentSince = null;
     } else if (speechStartedAt !== null && now - speechStartedAt >= minSpeechMs) {
       if (silentSince === null) silentSince = now;
-      else if (elapsed >= minRecordMs && now - silentSince >= silenceMs) {
+      else if (
+        elapsed >= minRecordMs &&
+        totalSpeechMs >= minTotalSpeechMs &&
+        now - silentSince >= silenceMs
+      ) {
         stopped = true;
         onSilence();
         return;
@@ -69,13 +84,16 @@ export function startSilenceDetection(
     }
   };
 
-  intervalId = window.setInterval(tick, 100);
+  intervalId = window.setInterval(tick, tickMs);
 
-  return () => {
-    stopped = true;
-    clearInterval(intervalId);
-    source.disconnect();
-    analyser.disconnect();
-    void audioContext.close();
+  return {
+    cleanup: () => {
+      stopped = true;
+      clearInterval(intervalId);
+      source.disconnect();
+      analyser.disconnect();
+      void audioContext.close();
+    },
+    hadMeaningfulSpeech: () => totalSpeechMs >= minTotalSpeechMs,
   };
 }
