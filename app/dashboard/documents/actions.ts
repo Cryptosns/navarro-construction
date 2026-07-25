@@ -5,53 +5,19 @@ import { revalidatePath } from "next/cache";
 
 const BUCKET = "documents";
 
+export type SaveDocumentInput = {
+  id?: string | null;
+  name: string;
+  project: string;
+  type: string;
+  notes: string;
+  storagePath?: string | null;
+  sizeBytes?: number | null;
+  mimeType?: string | null;
+};
+
 function revalidateDocumentPages() {
   revalidatePath("/dashboard/documents");
-}
-
-function parseForm(formData: FormData) {
-  return {
-    id: (formData.get("id") as string) || null,
-    name: (formData.get("name") as string) ?? "",
-    project: (formData.get("project") as string) ?? "",
-    type: (formData.get("type") as string) ?? "reporte",
-    notes: (formData.get("notes") as string) ?? "",
-    file: formData.get("file") as File | null,
-  };
-}
-
-async function uploadFile(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  userId: string,
-  file: File,
-): Promise<{ path: string | null; sizeBytes: number; mimeType: string; error?: string }> {
-  if (!file.size) {
-    return { path: null, sizeBytes: 0, mimeType: file.type || "application/octet-stream" };
-  }
-
-  const safeName = file.name.replace(/[^\w.\-() ]+/g, "_").replace(/\s+/g, "_");
-  const path = `${userId}/${Date.now()}-${safeName}`;
-  const buffer = Buffer.from(await file.arrayBuffer());
-
-  const { error } = await supabase.storage.from(BUCKET).upload(path, buffer, {
-    contentType: file.type || "application/octet-stream",
-    upsert: false,
-  });
-
-  if (error) {
-    return {
-      path: null,
-      sizeBytes: file.size,
-      mimeType: file.type,
-      error: error.message,
-    };
-  }
-
-  return {
-    path,
-    sizeBytes: file.size,
-    mimeType: file.type || "application/octet-stream",
-  };
 }
 
 async function removeStorageFile(
@@ -63,90 +29,84 @@ async function removeStorageFile(
 }
 
 export async function saveDocument(
-  formData: FormData,
+  input: SaveDocumentInput,
 ): Promise<{ ok: boolean; message: string }> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-  if (!user) return { ok: false, message: "Debes iniciar sesión." };
+    if (!user) return { ok: false, message: "Debes iniciar sesión." };
 
-  const parsed = parseForm(formData);
-  if (!parsed.name.trim()) return { ok: false, message: "El nombre es obligatorio." };
+    const name = input.name.trim();
+    if (!name) return { ok: false, message: "El nombre es obligatorio." };
 
-  let storagePath: string | null = null;
-  let sizeBytes: number | null = null;
-  let mimeType: string | null = null;
+    const row = {
+      name,
+      project: input.project.trim(),
+      type: input.type,
+      notes: input.notes.trim(),
+      updated_at: new Date().toISOString(),
+      ...(input.storagePath
+        ? {
+            storage_path: input.storagePath,
+            size_bytes: input.sizeBytes ?? null,
+            mime_type: input.mimeType ?? null,
+          }
+        : {}),
+    };
 
-  if (parsed.file?.size) {
-    const uploaded = await uploadFile(supabase, user.id, parsed.file);
-    if (!uploaded.path) {
-      const hint = uploaded.error?.includes("row-level security")
-        ? "Ejecuta supabase/documents-storage.sql en Supabase (permisos del bucket)."
-        : uploaded.error?.includes("Bucket not found")
-          ? "Crea el bucket 'documents' en Supabase Storage."
-          : uploaded.error;
+    if (input.id) {
+      if (input.storagePath) {
+        const { data: existing } = await supabase
+          .from("documents")
+          .select("storage_path")
+          .eq("id", input.id)
+          .eq("user_id", user.id)
+          .single();
+
+        if (existing?.storage_path && existing.storage_path !== input.storagePath) {
+          await removeStorageFile(supabase, existing.storage_path);
+        }
+      }
+
+      const { error } = await supabase
+        .from("documents")
+        .update(row)
+        .eq("id", input.id)
+        .eq("user_id", user.id);
+
+      if (error) return { ok: false, message: error.message };
+      revalidateDocumentPages();
+      return { ok: true, message: "Documento actualizado." };
+    }
+
+    const { error } = await supabase.from("documents").insert({
+      user_id: user.id,
+      ...row,
+    });
+
+    if (error) {
+      if (input.storagePath) {
+        await removeStorageFile(supabase, input.storagePath);
+      }
       return {
         ok: false,
-        message: hint ?? "No se pudo subir el archivo.",
+        message: error.message.includes("relation")
+          ? "Ejecuta el SQL de documents en supabase/schema.sql primero."
+          : error.message,
       };
     }
-    storagePath = uploaded.path;
-    sizeBytes = uploaded.sizeBytes;
-    mimeType = uploaded.mimeType;
-  }
 
-  const row = {
-    name: parsed.name.trim(),
-    project: parsed.project.trim(),
-    type: parsed.type,
-    notes: parsed.notes.trim(),
-    updated_at: new Date().toISOString(),
-    ...(storagePath
-      ? { storage_path: storagePath, size_bytes: sizeBytes, mime_type: mimeType }
-      : {}),
-  };
-
-  if (parsed.id) {
-    if (storagePath) {
-      const { data: existing } = await supabase
-        .from("documents")
-        .select("storage_path")
-        .eq("id", parsed.id)
-        .eq("user_id", user.id)
-        .single();
-
-      await removeStorageFile(supabase, existing?.storage_path);
-    }
-
-    const { error } = await supabase
-      .from("documents")
-      .update(row)
-      .eq("id", parsed.id)
-      .eq("user_id", user.id);
-
-    if (error) return { ok: false, message: error.message };
     revalidateDocumentPages();
-    return { ok: true, message: "Documento actualizado." };
-  }
-
-  const { error } = await supabase.from("documents").insert({
-    user_id: user.id,
-    ...row,
-  });
-
-  if (error) {
+    return { ok: true, message: "Documento guardado." };
+  } catch (err) {
     return {
       ok: false,
-      message: error.message.includes("relation")
-        ? "Ejecuta el SQL de documents en supabase/schema.sql primero."
-        : error.message,
+      message: err instanceof Error ? err.message : "Error al guardar el documento.",
     };
   }
-
-  revalidateDocumentPages();
-  return { ok: true, message: "Documento guardado." };
 }
 
 export async function deleteDocument(

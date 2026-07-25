@@ -1,8 +1,13 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { Document, DocumentType } from "@/lib/types";
 import { saveDocument } from "@/app/dashboard/documents/actions";
+import {
+  MAX_DOCUMENT_BYTES,
+  uploadDocumentFile,
+} from "@/lib/documents/upload-client";
 import { Button } from "@/components/ui/button";
 
 const typeOptions: { value: DocumentType; label: string }[] = [
@@ -39,6 +44,7 @@ export function DocumentFormDialog({
   document,
   onClose,
 }: DocumentFormDialogProps) {
+  const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
   const [form, setForm] = useState<DocumentFormData>(() =>
     document
@@ -54,6 +60,7 @@ export function DocumentFormDialog({
     document?.storagePath?.split("/").pop() ?? "",
   );
   const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   if (!open) return null;
@@ -69,21 +76,45 @@ export function DocumentFormDialog({
     e.preventDefault();
     setLoading(true);
     setMessage(null);
+    setStatus(null);
 
-    const formData = new FormData();
-    if (mode === "edit" && document) formData.set("id", document.id);
-    formData.set("name", form.name);
-    formData.set("project", form.project);
-    formData.set("type", form.type);
-    formData.set("notes", form.notes);
-    const file = fileRef.current?.files?.[0];
-    if (file) formData.set("file", file);
+    try {
+      const file = fileRef.current?.files?.[0];
+      let storagePath: string | undefined;
+      let sizeBytes: number | undefined;
+      let mimeType: string | undefined;
 
-    const result = await saveDocument(formData);
+      if (file?.size) {
+        setStatus("Subiendo archivo...");
+        const uploaded = await uploadDocumentFile(file);
+        storagePath = uploaded.storagePath;
+        sizeBytes = uploaded.sizeBytes;
+        mimeType = uploaded.mimeType;
+      }
 
-    setLoading(false);
-    setMessage(result.message);
-    if (result.ok) onClose();
+      setStatus("Guardando...");
+      const result = await saveDocument({
+        id: mode === "edit" && document ? document.id : null,
+        name: form.name,
+        project: form.project,
+        type: form.type,
+        notes: form.notes,
+        storagePath,
+        sizeBytes,
+        mimeType,
+      });
+
+      setMessage(result.message);
+      if (result.ok) {
+        router.refresh();
+        onClose();
+      }
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Error al guardar.");
+    } finally {
+      setLoading(false);
+      setStatus(null);
+    }
   }
 
   return (
@@ -110,6 +141,9 @@ export function DocumentFormDialog({
             {fileLabel && (
               <p className="mt-1 text-xs text-zinc-500">Seleccionado: {fileLabel}</p>
             )}
+            <p className="mt-1 text-xs text-zinc-400">
+              Máximo {(MAX_DOCUMENT_BYTES / (1024 * 1024)).toFixed(0)} MB
+            </p>
           </label>
 
           <label className="block">
@@ -159,14 +193,26 @@ export function DocumentFormDialog({
             />
           </label>
 
+          {status && (
+            <p className="rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-800">
+              {status}
+            </p>
+          )}
+
           {message && (
-            <p className="rounded-lg bg-zinc-100 px-3 py-2 text-sm text-zinc-700">
+            <p
+              className={`rounded-lg px-3 py-2 text-sm ${
+                message.includes("guardado") || message.includes("actualizado")
+                  ? "bg-emerald-50 text-emerald-800"
+                  : "bg-red-50 text-red-800"
+              }`}
+            >
               {message}
             </p>
           )}
 
           <div className="flex justify-end gap-3 border-t border-zinc-100 pt-4">
-            <Button type="button" variant="outline" onClick={onClose}>
+            <Button type="button" variant="outline" onClick={onClose} disabled={loading}>
               Cancelar
             </Button>
             <Button
@@ -175,7 +221,7 @@ export function DocumentFormDialog({
               className="bg-amber-500 hover:bg-amber-600"
             >
               {loading
-                ? "Guardando..."
+                ? status ?? "Guardando..."
                 : mode === "create"
                   ? "Guardar documento"
                   : "Actualizar"}
