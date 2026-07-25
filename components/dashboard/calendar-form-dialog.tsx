@@ -19,6 +19,7 @@ const typeOptions: { value: CalendarEvent["type"]; label: string }[] = [
 const emptyForm: CalendarFormData = {
   title: "",
   date: new Date().toISOString().split("T")[0],
+  startTime: "07:00",
   project: "",
   type: "meeting",
 };
@@ -41,6 +42,7 @@ export function CalendarFormDialog({
       ? {
           title: event.title,
           date: event.date,
+          startTime: event.startTime?.slice(0, 5) ?? "07:00",
           project: event.project,
           type: event.type,
         }
@@ -97,15 +99,26 @@ export function CalendarFormDialog({
             />
           </Field>
 
-          <Field label="Fecha *">
-            <input
-              required
-              type="date"
-              value={form.date}
-              onChange={(e) => updateField("date", e.target.value)}
-              className={inputClass}
-            />
-          </Field>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field label="Fecha *">
+              <input
+                required
+                type="date"
+                value={form.date}
+                onChange={(e) => updateField("date", e.target.value)}
+                className={inputClass}
+              />
+            </Field>
+
+            <Field label="Hora de inicio">
+              <input
+                type="time"
+                value={form.startTime}
+                onChange={(e) => updateField("startTime", e.target.value)}
+                className={inputClass}
+              />
+            </Field>
+          </div>
 
           <Field label="Proyecto">
             <input

@@ -40,6 +40,7 @@ export type CalendarEvent = {
   id: string;
   title: string;
   date: string;
+  startTime?: string;
   project: string;
   type: "inspection" | "delivery" | "meeting" | "start";
 };

@@ -16,6 +16,18 @@ export function formatDate(date: string): string {
   }).format(new Date(date));
 }
 
+export function formatTime(time?: string): string {
+  if (!time) return "";
+  const [hours, minutes] = time.split(":");
+  const date = new Date();
+  date.setHours(Number(hours), Number(minutes), 0, 0);
+  return new Intl.DateTimeFormat("es-MX", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(date);
+}
+
 export const statusLabels: Record<ProjectStatus, string> = {
   planning: "Planificación",
   in_progress: "En progreso",

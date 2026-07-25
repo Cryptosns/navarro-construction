@@ -7,6 +7,7 @@ import type { CalendarEvent } from "@/lib/types";
 export type CalendarFormData = {
   title: string;
   date: string;
+  startTime: string;
   project: string;
   type: CalendarEvent["type"];
 };
@@ -31,6 +32,7 @@ export async function createCalendarEvent(
     user_id: user.id,
     title: data.title.trim(),
     date: data.date || new Date().toISOString().split("T")[0],
+    start_time: data.startTime || null,
     project: data.project.trim(),
     type: data.type,
   });
@@ -65,6 +67,7 @@ export async function updateCalendarEvent(
     .update({
       title: data.title.trim(),
       date: data.date,
+      start_time: data.startTime || null,
       project: data.project.trim(),
       type: data.type,
     })
@@ -120,6 +123,7 @@ export async function seedCalendarEvents(): Promise<{ ok: boolean; message: stri
     user_id: user.id,
     title: e.title,
     date: e.date,
+    start_time: e.startTime || null,
     project: e.project,
     type: e.type,
   }));

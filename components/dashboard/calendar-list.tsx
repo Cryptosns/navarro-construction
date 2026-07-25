@@ -7,7 +7,7 @@ import {
   deleteCalendarEvent,
   seedCalendarEvents,
 } from "@/app/dashboard/calendar/actions";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatTime } from "@/lib/format";
 
 const eventColors = {
   inspection: "bg-blue-100 text-blue-800",
@@ -40,7 +40,11 @@ export function CalendarList({ events, usingMockData }: CalendarListProps) {
   const [mode, setMode] = useState<"create" | "edit">("create");
   const [seeding, setSeeding] = useState(false);
 
-  const sorted = [...events].sort((a, b) => a.date.localeCompare(b.date));
+  const sorted = [...events].sort((a, b) => {
+    const dateCompare = a.date.localeCompare(b.date);
+    if (dateCompare !== 0) return dateCompare;
+    return (a.startTime ?? "").localeCompare(b.startTime ?? "");
+  });
 
   function openCreate() {
     setMode("create");
@@ -139,9 +143,12 @@ export function CalendarList({ events, usingMockData }: CalendarListProps) {
 
                 <div className="min-w-0 flex-1">
                   <p className="font-semibold text-zinc-900">{event.title}</p>
-                  {event.project && (
-                    <p className="mt-0.5 text-sm text-zinc-500">{event.project}</p>
-                  )}
+                  <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-zinc-500">
+                    {event.startTime && (
+                      <span>🕐 {formatTime(event.startTime)}</span>
+                    )}
+                    {event.project && <span>{event.project}</span>}
+                  </div>
                 </div>
 
                 <span

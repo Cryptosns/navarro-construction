@@ -18,6 +18,7 @@ export default async function CalendarPage() {
         id: row.id,
         title: row.title,
         date: row.date,
+        startTime: row.start_time ?? undefined,
         project: row.project,
         type: row.type as CalendarEvent["type"],
       }));

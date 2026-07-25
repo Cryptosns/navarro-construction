@@ -78,6 +78,7 @@ export async function seedDemoData(
     user_id: userId,
     title: e.title,
     date: e.date,
+    start_time: e.startTime || null,
     project: e.project,
     type: e.type,
   }));

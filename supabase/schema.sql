@@ -78,6 +78,7 @@ create table if not exists calendar_events (
   user_id uuid references auth.users not null,
   title text not null,
   date date not null,
+  start_time time,
   project text not null default '',
   type text not null default 'meeting'
     check (type in ('inspection', 'delivery', 'meeting', 'start')),
