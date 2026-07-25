@@ -13,14 +13,14 @@ const eventColors = {
   inspection: "bg-blue-100 text-blue-800",
   delivery: "bg-emerald-100 text-emerald-800",
   meeting: "bg-violet-100 text-violet-800",
-  deadline: "bg-red-100 text-red-800",
+  start: "bg-red-100 text-red-800",
 } as const;
 
 const eventLabels = {
   inspection: "Inspección",
   delivery: "Entrega",
   meeting: "Reunión",
-  deadline: "Hito",
+  start: "Iniciar",
 } as const;
 
 function isUuid(id: string) {

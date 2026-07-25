@@ -13,7 +13,7 @@ const typeOptions: { value: CalendarEvent["type"]; label: string }[] = [
   { value: "inspection", label: "Inspección" },
   { value: "delivery", label: "Entrega" },
   { value: "meeting", label: "Reunión" },
-  { value: "deadline", label: "Hito" },
+  { value: "start", label: "Iniciar" },
 ];
 
 const emptyForm: CalendarFormData = {

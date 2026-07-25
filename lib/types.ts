@@ -41,7 +41,7 @@ export type CalendarEvent = {
   title: string;
   date: string;
   project: string;
-  type: "inspection" | "delivery" | "meeting" | "deadline";
+  type: "inspection" | "delivery" | "meeting" | "start";
 };
 
 export type Document = {

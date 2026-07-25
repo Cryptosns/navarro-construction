@@ -163,10 +163,10 @@ export const calendarEvents: CalendarEvent[] = [
   },
   {
     id: "4",
-    title: "Hito: instalación eléctrica",
+    title: "Inicio: instalación eléctrica",
     date: "2026-08-05",
     project: "Remodelación Hospital Central",
-    type: "deadline",
+    type: "start",
   },
 ];
 

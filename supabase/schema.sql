@@ -80,7 +80,7 @@ create table if not exists calendar_events (
   date date not null,
   project text not null default '',
   type text not null default 'meeting'
-    check (type in ('inspection', 'delivery', 'meeting', 'deadline')),
+    check (type in ('inspection', 'delivery', 'meeting', 'start')),
   created_at timestamptz not null default now()
 );
 
