@@ -28,7 +28,7 @@ export default function EstimatesPage() {
           </button>
         }
       />
-      <main className="flex-1 overflow-auto p-8">
+      <main className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {estimates.map((estimate) => (
             <div

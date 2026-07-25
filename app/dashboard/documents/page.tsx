@@ -21,7 +21,7 @@ export default function DocumentsPage() {
           </button>
         }
       />
-      <main className="flex-1 overflow-auto p-8">
+      <main className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
         <div className="grid gap-3">
           {documents.map((doc) => (
             <div

@@ -9,7 +9,7 @@ export function Hero() {
           <span className="h-2 w-2 rounded-full bg-amber-500" />
           IA para construcción en tiempo real
         </div>
-        <h1 className="mt-6 max-w-3xl text-5xl font-bold leading-tight tracking-tight text-zinc-900 md:text-6xl">
+        <h1 className="mt-6 max-w-3xl text-3xl font-bold leading-tight tracking-tight text-zinc-900 sm:text-4xl md:text-5xl lg:text-6xl">
           Gestiona tus obras con inteligencia artificial
         </h1>
         <p className="mt-6 max-w-2xl text-lg leading-relaxed text-zinc-600">

@@ -34,7 +34,7 @@ export default async function DashboardPage() {
         title="Dashboard"
         description={`Welcome back, ${displayName}. Here's what's happening across your projects.`}
       />
-      <main className="flex-1 overflow-auto p-8">
+      <main className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
         <div className="grid gap-6 lg:grid-cols-2">
           <ActiveProjectsPanel projects={activeProjects} />
           <BudgetOverviewPanel projects={projects} />

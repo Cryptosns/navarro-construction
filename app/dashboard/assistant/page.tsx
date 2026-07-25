@@ -7,7 +7,7 @@ export default function AssistantPage() {
         title="AI Assistant"
         description="Chat with Dave on the right panel — ask about projects, budgets, materials and tasks."
       />
-      <main className="flex flex-1 items-center justify-center p-8">
+      <main className="flex flex-1 items-center justify-center p-4 sm:p-6 lg:p-8">
         <div className="max-w-md text-center">
           <div className="mx-auto flex size-16 items-center justify-center rounded-full bg-blue-100 text-2xl">
             🤖

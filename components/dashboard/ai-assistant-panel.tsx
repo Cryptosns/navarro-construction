@@ -20,6 +20,7 @@ const starterMessages = [
 type AiAssistantPanelProps = {
   className?: string;
   embedded?: boolean;
+  mobileOverlay?: boolean;
 };
 
 type SpeechRecognitionInstance = {
@@ -37,6 +38,7 @@ type SpeechRecognitionInstance = {
 export function AiAssistantPanel({
   className,
   embedded = false,
+  mobileOverlay = false,
 }: AiAssistantPanelProps) {
   const { close, messages, loading, sendMessage, setMessages } =
     useAiAssistant();
@@ -111,7 +113,9 @@ export function AiAssistantPanel({
         "flex flex-col bg-white",
         embedded
           ? "h-full w-full"
-          : "sticky top-0 h-screen w-[380px] shrink-0 border-l border-zinc-200 shadow-[-8px_0_30px_rgba(0,0,0,0.06)]",
+          : mobileOverlay
+            ? "fixed inset-y-0 right-0 z-50 w-full max-w-md border-l border-zinc-200 shadow-[-8px_0_30px_rgba(0,0,0,0.06)] lg:static lg:z-auto lg:h-screen lg:w-[380px] lg:max-w-none lg:shrink-0"
+            : "sticky top-0 h-screen w-[380px] shrink-0 border-l border-zinc-200 shadow-[-8px_0_30px_rgba(0,0,0,0.06)]",
         className,
       )}
     >

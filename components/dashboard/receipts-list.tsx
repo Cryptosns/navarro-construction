@@ -82,7 +82,7 @@ export function ReceiptsList({ receipts, usingMockData }: ReceiptsListProps) {
       )}
 
       <div
-        className="mb-8 cursor-pointer rounded-xl border-2 border-dashed border-zinc-300 bg-zinc-50 p-12 text-center transition hover:border-amber-400 hover:bg-amber-50/50"
+        className="mb-8 cursor-pointer rounded-xl border-2 border-dashed border-zinc-300 bg-zinc-50 p-8 text-center transition hover:border-amber-400 hover:bg-amber-50/50 sm:p-12"
         onClick={openCreate}
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => {
@@ -107,8 +107,8 @@ export function ReceiptsList({ receipts, usingMockData }: ReceiptsListProps) {
       </div>
 
       <h2 className="mb-4 text-lg font-semibold text-zinc-900">Recent receipts</h2>
-      <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
-        <table className="w-full text-sm">
+      <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white shadow-sm">
+        <table className="w-full min-w-[640px] text-sm">
           <thead className="border-b border-zinc-200 bg-zinc-50 text-left text-zinc-600">
             <tr>
               <th className="px-6 py-3 font-medium">Vendor</th>

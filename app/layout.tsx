@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -16,6 +16,12 @@ export const metadata: Metadata = {
   title: "NavarroConstruction — Gestión inteligente de construcción",
   description:
     "Plataforma de gestión de proyectos de construcción con inteligencia artificial. Predice riesgos, controla presupuestos y optimiza equipos.",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: "#f59e0b",
 };
 
 export default function RootLayout({
