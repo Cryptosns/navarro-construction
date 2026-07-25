@@ -19,13 +19,17 @@ export async function uploadDocumentFile(file: File): Promise<UploadedDocumentFi
   }
 
   const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
 
-  if (!user) {
-    throw new Error("Debes iniciar sesión.");
+  const {
+    data: { session },
+    error: sessionError,
+  } = await supabase.auth.getSession();
+
+  if (sessionError || !session?.user) {
+    throw new Error("Sesión expirada. Cierra sesión y vuelve a entrar.");
   }
+
+  const user = session.user;
 
   const storagePath = `${user.id}/${Date.now()}-${safeFileName(file.name)}`;
 
@@ -35,9 +39,10 @@ export async function uploadDocumentFile(file: File): Promise<UploadedDocumentFi
   });
 
   if (error) {
-    if (error.message.includes("row-level security")) {
+    const msg = error.message.toLowerCase();
+    if (msg.includes("row-level security") || msg.includes("policy")) {
       throw new Error(
-        "Permisos de Storage faltantes. Ejecuta supabase/documents-storage.sql en Supabase.",
+        "Permisos de Storage faltantes. En Supabase → SQL Editor ejecuta el archivo supabase/documents-storage.sql (copia todo el script y Run).",
       );
     }
     if (error.message.includes("Bucket not found")) {
