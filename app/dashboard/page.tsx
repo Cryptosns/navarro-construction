@@ -6,12 +6,11 @@ import { BudgetOverviewPanel } from "@/components/dashboard/home/budget-overview
 import { RecentPhotosPanel } from "@/components/dashboard/home/recent-photos-panel";
 import { DashboardAiPanel } from "@/components/dashboard/home/dashboard-ai-panel";
 import {
-  activeProjects,
-  projects,
   recentActivity,
   recentPhotos,
   upcomingTasks,
 } from "@/lib/mock-data";
+import { getProjects } from "@/lib/data/queries";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function DashboardPage() {
@@ -19,6 +18,11 @@ export default async function DashboardPage() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
+  const projects = await getProjects(supabase);
+  const activeProjects = projects.filter(
+    (p) => p.status === "in_progress" || p.status === "planning",
+  );
 
   const displayName =
     user?.user_metadata?.full_name ?? user?.email?.split("@")[0] ?? "User";

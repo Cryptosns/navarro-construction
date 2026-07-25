@@ -1,8 +1,12 @@
 import { PageHeader } from "@/components/dashboard/page-header";
 import { ProjectCard } from "@/components/dashboard/project-card";
-import { projects } from "@/lib/mock-data";
+import { getProjects } from "@/lib/data/queries";
+import { createClient } from "@/lib/supabase/server";
 
-export default function ProjectsPage() {
+export default async function ProjectsPage() {
+  const supabase = await createClient();
+  const projects = await getProjects(supabase);
+
   return (
     <>
       <PageHeader
@@ -10,7 +14,7 @@ export default function ProjectsPage() {
         description="Manage all active and planned construction projects."
         action={
           <button className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-600">
-            + Nuevo proyecto
+            + New project
           </button>
         }
       />

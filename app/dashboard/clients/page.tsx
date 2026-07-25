@@ -1,7 +1,11 @@
 import { PageHeader } from "@/components/dashboard/page-header";
-import { clients } from "@/lib/mock-data";
+import { getClients } from "@/lib/data/queries";
+import { createClient } from "@/lib/supabase/server";
 
-export default function ClientsPage() {
+export default async function ClientsPage() {
+  const supabase = await createClient();
+  const clients = await getClients(supabase);
+
   return (
     <>
       <PageHeader
@@ -9,7 +13,7 @@ export default function ClientsPage() {
         description="Client directory and project contacts."
         action={
           <button className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-600">
-            + Nuevo cliente
+            + New client
           </button>
         }
       />
@@ -18,11 +22,11 @@ export default function ClientsPage() {
           <table className="w-full text-sm">
             <thead className="border-b border-zinc-200 bg-zinc-50 text-left text-zinc-600">
               <tr>
-                <th className="px-6 py-3 font-medium">Nombre</th>
-                <th className="px-6 py-3 font-medium">Empresa</th>
+                <th className="px-6 py-3 font-medium">Name</th>
+                <th className="px-6 py-3 font-medium">Company</th>
                 <th className="px-6 py-3 font-medium">Email</th>
-                <th className="px-6 py-3 font-medium">Teléfono</th>
-                <th className="px-6 py-3 font-medium">Proyectos</th>
+                <th className="px-6 py-3 font-medium">Phone</th>
+                <th className="px-6 py-3 font-medium">Projects</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100">

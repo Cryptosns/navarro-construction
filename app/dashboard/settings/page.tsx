@@ -1,4 +1,5 @@
 import { PageHeader } from "@/components/dashboard/page-header";
+import { SeedDataButton } from "@/components/dashboard/seed-data-button";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function SettingsPage() {
@@ -15,6 +16,8 @@ export default async function SettingsPage() {
       />
       <main className="flex-1 overflow-auto p-8">
         <div className="mx-auto max-w-2xl space-y-6">
+          <SeedDataButton />
+
           <section className="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm">
             <h2 className="font-semibold text-zinc-900">Perfil</h2>
             <div className="mt-4 space-y-4">
