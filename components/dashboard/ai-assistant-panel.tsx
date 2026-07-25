@@ -4,33 +4,25 @@ import { useEffect, useRef, useState } from "react";
 import { Check, Mic, Minus, Volume2, VolumeX, X } from "lucide-react";
 import { useAiAssistant } from "@/components/dashboard/ai-assistant-context";
 import {
-  getSpeechRecognitionLang,
+  getRecordingMimeType,
   getUiStrings,
-  speakText,
-  stopSpeaking,
+  playAssistantSpeech,
+  stopAudioPlayback,
+  transcribeAudio,
   type AssistantLanguage,
 } from "@/lib/ai/voice";
 import { cn } from "@/lib/utils";
 
 const ASSISTANT_NAME = "Dave";
 const ASSISTANT_ROLE = "Project Assistant";
+const MAX_RECORD_MS = 45_000;
+
+type VoiceState = "idle" | "recording" | "processing" | "speaking";
 
 type AiAssistantPanelProps = {
   className?: string;
   embedded?: boolean;
   mobileOverlay?: boolean;
-};
-
-type SpeechRecognitionInstance = {
-  lang: string;
-  interimResults: boolean;
-  maxAlternatives: number;
-  start: () => void;
-  stop: () => void;
-  onstart: ((ev: Event) => void) | null;
-  onend: ((ev: Event) => void) | null;
-  onerror: ((ev: Event) => void) | null;
-  onresult: ((ev: { results: { [index: number]: { [index: number]: { transcript: string } } } }) => void) | null;
 };
 
 export function AiAssistantPanel({
@@ -41,23 +33,23 @@ export function AiAssistantPanel({
   const { close, messages, loading, sendMessage, setMessages } =
     useAiAssistant();
   const [input, setInput] = useState("");
-  const [listening, setListening] = useState(false);
   const [language, setLanguage] = useState<AssistantLanguage>("auto");
   const [speakReplies, setSpeakReplies] = useState(true);
+  const [voiceState, setVoiceState] = useState<VoiceState>("idle");
+  const [voiceHint, setVoiceHint] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const lastSpokenRef = useRef(-1);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const recordTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const ui = getUiStrings(language);
 
   useEffect(() => {
     if (messages.length === 0) {
       setMessages([
-        {
-          role: "assistant",
-          content: ui.starter,
-          status: "done",
-        },
+        { role: "assistant", content: ui.starter, status: "done" },
       ]);
     }
   }, [messages.length, setMessages, ui.starter]);
@@ -70,13 +62,7 @@ export function AiAssistantPanel({
   }, [messages, loading]);
 
   useEffect(() => {
-    if (typeof window !== "undefined" && "speechSynthesis" in window) {
-      window.speechSynthesis.getVoices();
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!speakReplies || loading) return;
+    if (!speakReplies || loading || voiceState === "recording") return;
 
     const lastIndex = messages.length - 1;
     const last = messages[lastIndex];
@@ -87,60 +73,149 @@ export function AiAssistantPanel({
       lastIndex !== lastSpokenRef.current
     ) {
       lastSpokenRef.current = lastIndex;
-      speakText(last.content, language);
+      setVoiceState("speaking");
+      playAssistantSpeech(last.content, language)
+        .catch(() => {})
+        .finally(() => setVoiceState("idle"));
     }
-  }, [messages, loading, speakReplies, language]);
+  }, [messages, loading, speakReplies, language, voiceState]);
 
-  useEffect(() => () => stopSpeaking(), []);
+  useEffect(
+    () => () => {
+      stopRecording(false);
+      stopAudioPlayback();
+    },
+    [],
+  );
 
   function handleSend(text?: string) {
     const value = (text ?? input).trim();
     if (!value || loading) return;
     setInput("");
+    setVoiceHint(null);
     sendMessage(value, language);
   }
 
-  function toggleVoice() {
-    const SpeechRecognitionCtor = (
-      window as Window & {
-        SpeechRecognition?: new () => SpeechRecognitionInstance;
-        webkitSpeechRecognition?: new () => SpeechRecognitionInstance;
-      }
-    ).SpeechRecognition ?? (
-      window as Window & {
-        webkitSpeechRecognition?: new () => SpeechRecognitionInstance;
-      }
-    ).webkitSpeechRecognition;
-
-    if (!SpeechRecognitionCtor) {
-      sendMessage(ui.voiceNotSupported, language);
-      return;
-    }
-
-    if (listening && recognitionRef.current) {
-      recognitionRef.current.stop();
-      setListening(false);
-      return;
-    }
-
-    stopSpeaking();
-
-    const recognition = new SpeechRecognitionCtor();
-    recognition.lang = getSpeechRecognitionLang(language);
-    recognition.interimResults = false;
-    recognition.maxAlternatives = 1;
-
-    recognition.onstart = () => setListening(true);
-    recognition.onend = () => setListening(false);
-    recognition.onerror = () => setListening(false);
-    recognition.onresult = (event) => {
-      const transcript = event.results[0]?.[0]?.transcript;
-      if (transcript) handleSend(transcript);
-    };
-
-    recognitionRef.current = recognition;
-    recognition.start();
+  function stopStream() {
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
   }
+
+  function stopRecording(processAudio: boolean) {
+    if (recordTimeoutRef.current) {
+      clearTimeout(recordTimeoutRef.current);
+      recordTimeoutRef.current = null;
+    }
+
+    const recorder = recorderRef.current;
+    recorderRef.current = null;
+
+    if (recorder && recorder.state !== "inactive") {
+      if (processAudio) {
+        recorder.onstop = async () => {
+          stopStream();
+          setVoiceState("processing");
+          try {
+            const mime = recorder.mimeType || getRecordingMimeType();
+            const blob = new Blob(chunksRef.current, { type: mime });
+            chunksRef.current = [];
+
+            if (blob.size < 800) {
+              setVoiceHint(ui.voiceFailed);
+              setVoiceState("idle");
+              return;
+            }
+
+            const text = await transcribeAudio(blob, language);
+            if (text.trim()) {
+              handleSend(text);
+            } else {
+              setVoiceHint(ui.voiceFailed);
+            }
+          } catch (err) {
+            setVoiceHint(
+              err instanceof Error ? err.message : ui.voiceFailed,
+            );
+          } finally {
+            setVoiceState("idle");
+          }
+        };
+      } else {
+        recorder.onstop = () => {
+          stopStream();
+          chunksRef.current = [];
+          setVoiceState("idle");
+        };
+      }
+      recorder.stop();
+    } else {
+      stopStream();
+      if (!processAudio) setVoiceState("idle");
+    }
+  }
+
+  async function toggleVoice() {
+    if (loading || voiceState === "processing" || voiceState === "speaking") {
+      return;
+    }
+
+    if (voiceState === "recording") {
+      stopRecording(true);
+      return;
+    }
+
+    stopAudioPlayback();
+    setVoiceHint(null);
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setVoiceHint(ui.voiceFailed);
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+        },
+      });
+      streamRef.current = stream;
+
+      const mimeType = getRecordingMimeType();
+      const recorder = new MediaRecorder(
+        stream,
+        MediaRecorder.isTypeSupported(mimeType) ? { mimeType } : undefined,
+      );
+
+      chunksRef.current = [];
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data);
+      };
+
+      recorderRef.current = recorder;
+      recorder.start(250);
+      setVoiceState("recording");
+
+      recordTimeoutRef.current = setTimeout(() => {
+        if (recorderRef.current?.state === "recording") {
+          stopRecording(true);
+        }
+      }, MAX_RECORD_MS);
+    } catch {
+      stopStream();
+      setVoiceState("idle");
+      setVoiceHint(ui.micDenied);
+    }
+  }
+
+  const statusLabel =
+    voiceState === "processing"
+      ? ui.processing
+      : voiceState === "speaking"
+        ? ui.speaking
+        : voiceState === "recording"
+          ? ui.listening
+          : ui.tapToSpeak;
 
   return (
     <aside
@@ -206,7 +281,7 @@ export function AiAssistantPanel({
             type="checkbox"
             checked={speakReplies}
             onChange={(e) => {
-              if (!e.target.checked) stopSpeaking();
+              if (!e.target.checked) stopAudioPlayback();
               setSpeakReplies(e.target.checked);
             }}
             className="size-3.5 rounded"
@@ -272,7 +347,7 @@ export function AiAssistantPanel({
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder={ui.placeholder}
-            disabled={loading}
+            disabled={loading || voiceState !== "idle"}
             className="w-full rounded-xl border border-zinc-200 px-3 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
           />
         </form>
@@ -281,21 +356,21 @@ export function AiAssistantPanel({
           <button
             type="button"
             onClick={toggleVoice}
-            disabled={loading}
+            disabled={loading || voiceState === "processing" || voiceState === "speaking"}
             className={cn(
               "flex size-14 items-center justify-center rounded-full border transition",
-              listening
-                ? "border-blue-600 bg-blue-50 text-blue-600 ring-4 ring-blue-100"
+              voiceState === "recording"
+                ? "border-red-500 bg-red-50 text-red-600 ring-4 ring-red-100"
                 : "border-zinc-200 bg-zinc-50 text-zinc-600 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600",
             )}
             aria-label={ui.tapToSpeak}
           >
-            <Mic className="size-6" />
+            <Mic className={cn("size-6", voiceState === "recording" && "animate-pulse")} />
           </button>
           <button
             type="button"
             onClick={() => {
-              if (speakReplies) stopSpeaking();
+              stopAudioPlayback();
               setSpeakReplies((v) => !v);
             }}
             className={cn(
@@ -306,18 +381,27 @@ export function AiAssistantPanel({
             )}
             aria-label={ui.speakReplies}
           >
-            {speakReplies ? <Volume2 className="size-5" /> : <VolumeX className="size-5" />}
+            {speakReplies ? (
+              <Volume2 className="size-5" />
+            ) : (
+              <VolumeX className="size-5" />
+            )}
           </button>
         </div>
         <p className="mt-2 text-center text-xs text-zinc-500">
-          {listening ? ui.listening : ui.tapToSpeak}
+          {voiceState === "recording" ? ui.tapToStop : statusLabel}
         </p>
+        {voiceHint && (
+          <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-center text-xs text-amber-800">
+            {voiceHint}
+          </p>
+        )}
 
         <div className="mt-4 flex justify-end">
           <button
             type="button"
             onClick={() => handleSend()}
-            disabled={loading || !input.trim()}
+            disabled={loading || !input.trim() || voiceState !== "idle"}
             className="text-sm font-medium text-blue-600 transition hover:text-blue-700 disabled:text-zinc-300"
           >
             {ui.continue}

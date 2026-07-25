@@ -8,88 +8,144 @@ export function resolveLanguage(lang: AssistantLanguage): "es" | "en" {
   return "en";
 }
 
-export function getSpeechRecognitionLang(lang: AssistantLanguage): string {
-  return resolveLanguage(lang) === "es" ? "es-MX" : "en-US";
-}
-
-export function getSpeechSynthesisLang(lang: AssistantLanguage): string {
-  return resolveLanguage(lang) === "es" ? "es-MX" : "en-US";
-}
-
-/** Heurística simple cuando el modo es auto y ya tenemos texto. */
 export function detectTextLanguage(text: string): "es" | "en" {
   if (/[áéíóúñ¿¡]/i.test(text)) return "es";
   const esHints =
-    /\b(hola|gracias|proyecto|obra|presupuesto|calendario|mañana|hoy|qué|cómo|cuándo|dónde|por favor|necesito|tengo|puedes|ayuda)\b/i;
+    /\b(hola|gracias|proyecto|obra|presupuestos|calendario|mañana|hoy|qué|cómo|cuándo|dónde|por favor|necesito|tengo|puedes|ayuda|trabajo|evento)\b/i;
   return esHints.test(text) ? "es" : "en";
 }
 
-export function pickVoice(lang: "es" | "en"): SpeechSynthesisVoice | null {
-  const voices = window.speechSynthesis.getVoices();
-  const prefix = lang === "es" ? "es" : "en";
-  return (
-    voices.find((v) => v.lang.replace("_", "-").startsWith(`${prefix}-MX`)) ??
-    voices.find((v) => v.lang.replace("_", "-").startsWith(`${prefix}-US`)) ??
-    voices.find((v) => v.lang.replace("_", "-").startsWith(prefix)) ??
-    null
-  );
+export function getRecordingMimeType(): string {
+  if (typeof MediaRecorder === "undefined") return "audio/webm";
+  if (MediaRecorder.isTypeSupported("audio/mp4")) return "audio/mp4";
+  if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) return "audio/webm;codecs=opus";
+  if (MediaRecorder.isTypeSupported("audio/webm")) return "audio/webm";
+  return "audio/mp4";
 }
 
-export function speakText(text: string, lang: AssistantLanguage): void {
-  if (!("speechSynthesis" in window) || !text.trim()) return;
+let activeAudio: HTMLAudioElement | null = null;
 
-  window.speechSynthesis.cancel();
-  const resolved =
-    lang === "auto" ? detectTextLanguage(text) : resolveLanguage(lang);
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = getSpeechSynthesisLang(resolved);
-  const voice = pickVoice(resolved);
-  if (voice) utterance.voice = voice;
-  utterance.rate = 1;
-  utterance.pitch = 1;
-  window.speechSynthesis.speak(utterance);
-}
-
-export function stopSpeaking(): void {
-  if ("speechSynthesis" in window) {
+export function stopAudioPlayback(): void {
+  if (activeAudio) {
+    activeAudio.pause();
+    activeAudio.src = "";
+    activeAudio = null;
+  }
+  if (typeof window !== "undefined" && "speechSynthesis" in window) {
     window.speechSynthesis.cancel();
   }
+}
+
+export async function transcribeAudio(
+  blob: Blob,
+  language: AssistantLanguage,
+): Promise<string> {
+  const formData = new FormData();
+  formData.append("audio", blob, "voice.webm");
+  if (language !== "auto") {
+    formData.append("language", resolveLanguage(language));
+  }
+
+  const res = await fetch("/api/ai/transcribe", { method: "POST", body: formData });
+  const data = await res.json();
+
+  if (!res.ok) {
+    throw new Error(data.error ?? "Error al transcribir");
+  }
+
+  return data.text ?? "";
+}
+
+export async function playAssistantSpeech(
+  text: string,
+  language: AssistantLanguage,
+): Promise<void> {
+  if (!text.trim()) return;
+
+  stopAudioPlayback();
+
+  const res = await fetch("/api/ai/speech", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text, language }),
+  });
+
+  if (!res.ok) {
+    speakWithBrowser(text, language);
+    return;
+  }
+
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const audio = new Audio(url);
+  activeAudio = audio;
+
+  await new Promise<void>((resolve, reject) => {
+    audio.onended = () => {
+      URL.revokeObjectURL(url);
+      activeAudio = null;
+      resolve();
+    };
+    audio.onerror = () => {
+      URL.revokeObjectURL(url);
+      activeAudio = null;
+      reject(new Error("Audio playback failed"));
+    };
+    audio.play().catch(reject);
+  });
+}
+
+function speakWithBrowser(text: string, lang: AssistantLanguage): void {
+  if (!("speechSynthesis" in window)) return;
+
+  const resolved = lang === "auto" ? detectTextLanguage(text) : resolveLanguage(lang);
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = resolved === "es" ? "es-MX" : "en-US";
+  window.speechSynthesis.speak(utterance);
 }
 
 export const uiStrings = {
   es: {
     placeholder: "Escribe un mensaje...",
     tapToSpeak: "Toca para hablar",
-    listening: "Escuchando...",
+    tapToStop: "Toca para terminar",
+    listening: "Grabando...",
+    processing: "Procesando voz...",
+    speaking: "Reproduciendo...",
     thinking: "Pensando...",
     continue: "Enviar",
     done: "Listo.",
     error: "Error",
-    voiceNotSupported: "Tu navegador no soporta entrada de voz.",
+    micDenied: "Permite el micrófono en Ajustes del teléfono.",
+    voiceFailed: "No se pudo usar el micrófono. Intenta de nuevo.",
     speakReplies: "Respuestas por voz",
     language: "Idioma",
     auto: "Auto",
     spanish: "Español",
     english: "English",
     starter:
-      "¡Hola! Puedo ayudarte con proyectos, presupuestos, materiales y tareas. ¿Qué necesitas?",
+      "¡Hola! Puedo ayudarte con proyectos, presupuestos, materiales y tareas. Toca el micrófono y habla en español o inglés.",
   },
   en: {
     placeholder: "Type a message...",
     tapToSpeak: "Tap to speak",
-    listening: "Listening...",
+    tapToStop: "Tap to stop",
+    listening: "Recording...",
+    processing: "Processing voice...",
+    speaking: "Playing...",
     thinking: "Thinking...",
     continue: "Send",
     done: "Done.",
     error: "Error",
-    voiceNotSupported: "Voice input is not supported in this browser.",
+    micDenied: "Allow microphone access in your phone settings.",
+    voiceFailed: "Could not use the microphone. Try again.",
     speakReplies: "Speak replies",
     language: "Language",
     auto: "Auto",
     spanish: "Español",
     english: "English",
     starter:
-      "Hi! I can help you manage projects, budgets, materials and tasks. What would you like to do?",
+      "Hi! I can help with projects, budgets, materials and tasks. Tap the mic and speak in Spanish or English.",
   },
 } as const;
 
