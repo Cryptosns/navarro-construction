@@ -45,13 +45,18 @@ export type CalendarEvent = {
   type: "inspection" | "delivery" | "meeting" | "start";
 };
 
+export type DocumentType = "plano" | "contrato" | "permiso" | "reporte";
+
 export type Document = {
   id: string;
   name: string;
   project: string;
-  type: "plano" | "contrato" | "permiso" | "reporte";
+  type: DocumentType;
   updatedAt: string;
   size: string;
+  notes?: string;
+  storagePath?: string;
+  mimeType?: string;
 };
 
 export type Report = {

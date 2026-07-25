@@ -1,45 +1,39 @@
 import { PageHeader } from "@/components/dashboard/page-header";
-import { documents } from "@/lib/mock-data";
-import { formatDate } from "@/lib/format";
+import { DocumentsList } from "@/components/dashboard/documents-list";
+import { createClient } from "@/lib/supabase/server";
+import { formatFileSize } from "@/lib/format";
 
-const docIcons = {
-  plano: "📐",
-  contrato: "📄",
-  permiso: "✅",
-  reporte: "📊",
-} as const;
+export default async function DocumentsPage() {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("documents")
+    .select("*")
+    .order("updated_at", { ascending: false });
 
-export default function DocumentsPage() {
+  const usingMockData = Boolean(error || !data?.length);
+
+  const documents = usingMockData
+    ? (await import("@/lib/mock-data")).documents
+    : (data ?? []).map((row) => ({
+        id: row.id,
+        name: row.name,
+        project: row.project,
+        type: row.type,
+        updatedAt: row.updated_at?.split("T")[0] ?? row.created_at?.split("T")[0] ?? "",
+        size: formatFileSize(row.size_bytes),
+        notes: row.notes ?? undefined,
+        storagePath: row.storage_path ?? undefined,
+        mimeType: row.mime_type ?? undefined,
+      }));
+
   return (
     <>
       <PageHeader
         title="Documents"
-        description="Plans, contracts, permits and reports in one place."
-        action={
-          <button className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-600">
-            + Subir documento
-          </button>
-        }
+        description="Planes, contratos, permisos y reportes en un solo lugar."
       />
       <main className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
-        <div className="grid gap-3">
-          {documents.map((doc) => (
-            <div
-              key={doc.id}
-              className="flex items-center gap-4 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm transition hover:border-amber-200"
-            >
-              <span className="text-2xl">{docIcons[doc.type]}</span>
-              <div className="flex-1">
-                <p className="font-medium text-zinc-900">{doc.name}</p>
-                <p className="text-sm text-zinc-500">{doc.project}</p>
-              </div>
-              <div className="text-right text-sm text-zinc-500">
-                <p>{doc.size}</p>
-                <p>{formatDate(doc.updatedAt)}</p>
-              </div>
-            </div>
-          ))}
-        </div>
+        <DocumentsList documents={documents} usingMockData={usingMockData} />
       </main>
     </>
   );
