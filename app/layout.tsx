@@ -16,6 +16,12 @@ export const metadata: Metadata = {
   title: "NavarroConstruction — Gestión inteligente de construcción",
   description:
     "Plataforma de gestión de proyectos de construcción con inteligencia artificial. Predice riesgos, controla presupuestos y optimiza equipos.",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "NavarroConstruction",
+  },
 };
 
 export const viewport: Viewport = {

@@ -32,6 +32,43 @@ function urlBase64ToUint8Array(base64String: string) {
   return outputArray;
 }
 
+function isIOS(): boolean {
+  return (
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+  );
+}
+
+function isStandalonePwa(): boolean {
+  return (
+    window.matchMedia("(display-mode: standalone)").matches ||
+    (navigator as Navigator & { standalone?: boolean }).standalone === true
+  );
+}
+
+function getPushSupportError(): string | null {
+  if (!window.isSecureContext) {
+    return "Las notificaciones requieren HTTPS. Usa https://navarro-construction-g7hx.vercel.app";
+  }
+
+  if (isIOS() && !isStandalonePwa()) {
+    return "En iPhone debes instalar la app primero: Safari → Compartir (□↑) → «Añadir a pantalla de inicio». Luego ábrela desde el ícono y activa push aquí.";
+  }
+
+  if (!("serviceWorker" in navigator)) {
+    if (isIOS()) {
+      return "Actualiza iOS a 16.4 o superior e instala la app en pantalla de inicio.";
+    }
+    return "Usa Chrome en Android o instala la app en pantalla de inicio en iPhone.";
+  }
+
+  if (!("Notification" in window)) {
+    return "Tu navegador no permite notificaciones. Revisa permisos en Ajustes del teléfono.";
+  }
+
+  return null;
+}
+
 export function NotificationSettings({
   initialSmsEnabled,
   initialPhoneNumber,
@@ -77,8 +114,9 @@ export function NotificationSettings({
       let nextPushEnabled = pushEnabled;
 
       if (pushEnabled) {
-        if (!("Notification" in window) || !("serviceWorker" in navigator)) {
-          throw new Error("Tu navegador no soporta notificaciones push.");
+        const pushError = getPushSupportError();
+        if (pushError) {
+          throw new Error(pushError);
         }
         const permission = await Notification.requestPermission();
         if (permission !== "granted") {
@@ -169,6 +207,18 @@ export function NotificationSettings({
           <summary className="cursor-pointer font-medium text-zinc-700">
             Notificaciones push (opcional)
           </summary>
+          <div className="mt-3 space-y-2 text-xs text-zinc-600">
+            <p className="font-medium text-zinc-800">iPhone (obligatorio):</p>
+            <p>
+              1. Safari → Compartir → «Añadir a pantalla de inicio»
+              <br />
+              2. Abre la app desde el ícono (no desde Safari)
+              <br />
+              3. Settings → activa push → Guardar
+            </p>
+            <p className="font-medium text-zinc-800">Android:</p>
+            <p>Chrome → Menú → «Instalar app» → luego activa push aquí.</p>
+          </div>
           <label className="mt-3 flex items-center justify-between gap-4 text-zinc-700">
             <span>Activar push en el navegador</span>
             <input
